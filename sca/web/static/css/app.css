@@ -453,7 +453,9 @@ body {
    ========================================================================== */
 
 .tabs-nav {
-  height: 38px;
+  min-height: 38px;
+  flex-shrink: 0;
+  scrollbar-width: thin;
   background-color: var(--bg-topbar);
   border-bottom: 1px solid var(--border-color);
   display: flex;
@@ -469,12 +471,14 @@ body {
   color: var(--text-secondary);
   font-size: 13px;
   font-weight: 500;
-  padding: 6px 12px;
+  padding: 6px 10px;
   border-radius: 6px;
   cursor: pointer;
   display: flex;
   align-items: center;
   gap: 6px;
+  flex-shrink: 0;
+  white-space: nowrap;
   transition: all var(--transition-speed);
 }
 
@@ -1362,4 +1366,632 @@ body {
   clip: rect(0, 0, 0, 0);
   white-space: nowrap;
   border-width: 0;
+}
+
+/* ==========================================================================
+   CFG Viewer Styles
+   ========================================================================== */
+
+.cfg-toolbar {
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.cfg-func-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.cfg-func-btn {
+  font-family: var(--font-mono);
+}
+
+.cfg-func-btn.active {
+  background-color: var(--accent-green-subtle);
+  border-color: var(--accent-green);
+  color: var(--text-main);
+}
+
+.cfg-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 14px;
+  font-size: 11px;
+  color: var(--text-secondary);
+  margin-bottom: 10px;
+}
+
+.cfg-legend span {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.cfg-swatch {
+  display: inline-block;
+  width: 18px;
+  height: 0;
+  border-top: 2px solid var(--text-secondary);
+}
+
+.cfg-swatch-true { border-top-color: var(--accent-green-hover); }
+.cfg-swatch-false { border-top-color: var(--severity-error); }
+.cfg-swatch-back { border-top: 2px dashed var(--severity-info); }
+.cfg-swatch-unreachable { height: 10px; border: 1px dashed var(--severity-warning); border-radius: 2px; }
+
+.cfg-canvas {
+  background-color: var(--bg-card);
+  border: 1px solid var(--border-color);
+  border-radius: 6px;
+  padding: 8px;
+  overflow: auto;
+}
+
+.cfg-svg {
+  display: block;
+  margin: 0 auto;
+  max-width: 100%;
+  height: auto;
+}
+
+.cfg-edge {
+  fill: none;
+  stroke-width: 1.6;
+}
+
+.cfg-arrowhead { stroke: none; }
+.cfg-edge.cfg-edge-normal { stroke: var(--text-secondary); }
+.cfg-edge.cfg-edge-true { stroke: var(--accent-green-hover); }
+.cfg-edge.cfg-edge-false { stroke: var(--severity-error); }
+.cfg-edge.cfg-edge-back { stroke: var(--severity-info); stroke-dasharray: 5 4; }
+.cfg-arrowhead.cfg-edge-normal { fill: var(--text-secondary); }
+.cfg-arrowhead.cfg-edge-true { fill: var(--accent-green-hover); }
+.cfg-arrowhead.cfg-edge-false { fill: var(--severity-error); }
+.cfg-arrowhead.cfg-edge-back { fill: var(--severity-info); }
+
+.cfg-edge-label {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.cfg-edge-label.cfg-edge-true { fill: var(--accent-green-hover); }
+.cfg-edge-label.cfg-edge-false { fill: var(--severity-error); }
+
+.cfg-node-box {
+  fill: var(--bg-panel);
+  stroke: var(--border-color);
+  stroke-width: 1.2;
+  transition: stroke var(--transition-speed);
+}
+
+.cfg-node-terminal .cfg-node-box {
+  fill: var(--accent-green-subtle);
+  stroke: var(--accent-green);
+}
+
+.cfg-node-unreachable .cfg-node-box {
+  fill: var(--severity-warning-bg);
+  stroke: var(--severity-warning);
+  stroke-dasharray: 4 3;
+}
+
+.cfg-node-clickable { cursor: pointer; }
+.cfg-node-clickable:hover .cfg-node-box { stroke: var(--severity-info); stroke-width: 2; }
+
+.cfg-node-title {
+  font-family: var(--font-sans);
+  font-size: 11px;
+  font-weight: 700;
+  fill: var(--text-secondary);
+}
+
+.cfg-node-terminal .cfg-node-title { fill: var(--text-main); }
+.cfg-node-unreachable .cfg-node-title { fill: var(--severity-warning); }
+
+.cfg-node-sep { stroke: var(--border-color); }
+
+.cfg-node-code {
+  font-family: var(--font-mono);
+  font-size: 12px;
+  fill: var(--text-main);
+  white-space: pre;
+}
+
+/* ==========================================================================
+   Contracts Tab Styles
+   ========================================================================== */
+
+.contracts-intro {
+  font-size: 13px;
+  color: var(--text-secondary);
+  margin-bottom: 12px;
+  line-height: 1.5;
+}
+
+.contracts-intro code,
+.contract-reasons code {
+  font-family: var(--font-mono);
+  font-size: 12px;
+}
+
+.contracts-list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.contract-card {
+  background-color: var(--bg-card);
+  border: 1px solid var(--border-color);
+  border-left: 4px solid var(--severity-info);
+  border-radius: 6px;
+  padding: 12px 14px;
+  cursor: pointer;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  transition: background-color var(--transition-speed);
+}
+
+.contract-card:hover {
+  background-color: var(--bg-card-hover);
+}
+
+.contract-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.contract-func {
+  font-family: var(--font-mono);
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--text-main);
+}
+
+.contract-requires {
+  font-size: 13px;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+}
+
+.contract-kw {
+  color: var(--text-secondary);
+  font-size: 12px;
+}
+
+.contract-chip {
+  font-family: var(--font-mono);
+  font-size: 12.5px;
+  background-color: var(--severity-info-bg);
+  border: 1px solid var(--severity-info-border);
+  color: var(--text-main);
+  border-radius: 4px;
+  padding: 2px 8px;
+}
+
+.contract-reasons {
+  margin: 0;
+  padding-left: 18px;
+  font-size: 12px;
+  color: var(--text-secondary);
+  line-height: 1.6;
+}
+
+.contracts-none {
+  margin-top: 14px;
+  font-size: 12px;
+  color: var(--text-secondary);
+}
+
+.contracts-none a {
+  color: var(--severity-info);
+  font-family: var(--font-mono);
+}
+
+/* ==========================================================================
+   Learning Tab Styles (misconception diagnosis)
+   ========================================================================== */
+
+.diag-misconception {
+  font-size: 12px;
+  color: var(--severity-info);
+}
+
+.learning-heading {
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--text-main);
+  margin: 4px 0 10px;
+}
+
+.learning-empty,
+.learning-note {
+  font-size: 12px;
+  color: var(--text-secondary);
+  margin-bottom: 12px;
+}
+
+.misconception-list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin-bottom: 20px;
+}
+
+.misconception-card {
+  background-color: var(--bg-card);
+  border: 1px solid var(--border-color);
+  border-left: 4px solid var(--severity-warning);
+  border-radius: 6px;
+  padding: 12px 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.misconception-title {
+  font-size: 13.5px;
+  font-weight: 700;
+  color: var(--text-main);
+}
+
+.misconception-text,
+.misconception-fix {
+  font-size: 12.5px;
+  color: var(--text-secondary);
+  line-height: 1.5;
+  margin: 0;
+}
+
+.misconception-fix strong {
+  color: var(--text-main);
+}
+
+.misconception-lines {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  color: var(--text-secondary);
+}
+
+.misconception-line {
+  background-color: var(--bg-panel);
+  border: 1px solid var(--border-color);
+  color: var(--severity-info);
+  border-radius: 4px;
+  padding: 1px 8px;
+  font-family: var(--font-mono);
+  font-size: 11.5px;
+  cursor: pointer;
+}
+
+.misconception-line:hover {
+  border-color: var(--severity-info);
+}
+
+.misconception-rules {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--text-muted);
+}
+
+.learning-profile-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  border-top: 1px solid var(--border-color);
+  padding-top: 14px;
+}
+
+.profile-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.profile-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(60px, 140px) 32px;
+  align-items: center;
+  gap: 10px;
+  font-size: 12.5px;
+}
+
+.profile-title {
+  color: var(--text-main);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.profile-bar {
+  height: 8px;
+  background-color: var(--bg-panel-subtle);
+  border: 1px solid var(--border-color);
+  border-radius: 4px;
+  overflow: hidden;
+}
+
+.profile-bar span {
+  display: block;
+  height: 100%;
+  background-color: var(--severity-warning);
+}
+
+.profile-count {
+  font-family: var(--font-mono);
+  color: var(--text-secondary);
+  text-align: right;
+}
+
+.tabs-nav::-webkit-scrollbar {
+  height: 4px;
+}
+
+.tabs-nav::-webkit-scrollbar-thumb {
+  background-color: var(--border-color);
+  border-radius: 2px;
+}
+
+/* ==========================================================================
+   Score Tab: Before vs After Fixes
+   ========================================================================== */
+
+.score-compare-section {
+  background-color: var(--bg-card);
+  border: 1px solid var(--border-color);
+  border-radius: 8px;
+  padding: 14px 16px;
+  margin-bottom: 20px;
+}
+
+.score-compare-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 12px;
+}
+
+.score-compare-header .section-title {
+  margin: 0;
+}
+
+.score-compare-row {
+  display: flex;
+  align-items: stretch;
+  gap: 8px;
+}
+
+.score-compare-card {
+  flex: 1 1 0;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  background-color: var(--bg-panel);
+  border: 1px solid var(--border-color);
+  border-radius: 6px;
+  padding: 10px 12px;
+}
+
+.score-compare-card.current {
+  border-color: var(--severity-info-border);
+}
+
+.score-compare-card.projected {
+  border-style: dashed;
+}
+
+.score-compare-label {
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--text-secondary);
+}
+
+.score-compare-value {
+  font-size: 28px;
+  font-weight: 700;
+  line-height: 1.1;
+  font-variant-numeric: tabular-nums;
+}
+
+.score-compare-value small {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-muted);
+  margin-left: 2px;
+}
+
+.score-compare-sub {
+  font-size: 11.5px;
+  color: var(--text-secondary);
+}
+
+.score-compare-arrow {
+  align-self: center;
+  color: var(--text-muted);
+  font-size: 18px;
+}
+
+.score-delta {
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+
+.score-delta.up { color: var(--accent-green-hover); }
+.score-delta.down { color: var(--severity-error); }
+.score-delta.same { color: var(--text-secondary); }
+
+.score-compare-table {
+  width: 100%;
+  border-collapse: collapse;
+  margin-top: 14px;
+  font-size: 12.5px;
+}
+
+.score-compare-table th {
+  text-align: left;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--text-secondary);
+  border-bottom: 1px solid var(--border-color);
+  padding: 4px 6px;
+}
+
+.score-compare-table td {
+  padding: 5px 6px;
+  border-bottom: 1px solid var(--border-light);
+  color: var(--text-main);
+  font-variant-numeric: tabular-nums;
+}
+
+.score-compare-table code {
+  font-family: var(--font-mono);
+  font-size: 12px;
+}
+
+.score-compare-hint {
+  margin: 10px 0 0;
+  font-size: 12px;
+  color: var(--text-secondary);
+}
+
+@media (max-width: 640px) {
+  .score-compare-row {
+    flex-direction: column;
+  }
+  .score-compare-arrow {
+    transform: rotate(90deg);
+  }
+}
+
+/* ==========================================================================
+   Editor File Tabs
+   ========================================================================== */
+
+.editor-header {
+  gap: 10px;
+}
+
+.file-tabs-wrap {
+  display: flex;
+  align-items: flex-end;
+  align-self: stretch;
+  min-width: 0;
+  flex: 1 1 auto;
+  gap: 4px;
+}
+
+.file-tabs {
+  display: flex;
+  align-items: flex-end;
+  gap: 2px;
+  min-width: 0;
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+
+.file-tabs::-webkit-scrollbar {
+  display: none;
+}
+
+.file-tabs .file-tab {
+  flex-shrink: 0;
+  cursor: pointer;
+  background-color: transparent;
+  border-color: transparent;
+  color: var(--text-secondary);
+  padding: 6px 8px 6px 12px;
+  gap: 6px;
+  max-width: 220px;
+  user-select: none;
+}
+
+.file-tabs .file-tab:hover {
+  background-color: var(--bg-hover);
+  color: var(--text-main);
+}
+
+.file-tabs .file-tab.active {
+  background-color: var(--bg-editor);
+  border-color: var(--border-color);
+  color: var(--text-main);
+}
+
+.file-tabs .file-tab:focus-visible {
+  outline: 2px solid var(--severity-info);
+  outline-offset: -2px;
+}
+
+.file-tab-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.file-tab-close {
+  background: transparent;
+  border: none;
+  color: var(--text-muted);
+  font-size: 15px;
+  line-height: 1;
+  width: 18px;
+  height: 18px;
+  border-radius: 4px;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+}
+
+.file-tab-close:hover {
+  background-color: var(--bg-hover);
+  color: var(--text-main);
+}
+
+.file-tab-rename {
+  font: inherit;
+  font-size: 13px;
+  width: 140px;
+  background-color: var(--bg-panel);
+  color: var(--text-main);
+  border: 1px solid var(--severity-info);
+  border-radius: 4px;
+  padding: 1px 6px;
+}
+
+.btn-new-tab {
+  flex-shrink: 0;
+  align-self: center;
+  background: transparent;
+  border: 1px solid transparent;
+  color: var(--text-secondary);
+  font-size: 18px;
+  line-height: 1;
+  width: 26px;
+  height: 26px;
+  border-radius: 6px;
+  cursor: pointer;
+}
+
+.btn-new-tab:hover {
+  background-color: var(--bg-hover);
+  border-color: var(--border-color);
+  color: var(--text-main);
+}
+
+.stale-badge {
+  flex-shrink: 0;
 }
