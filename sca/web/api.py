@@ -210,6 +210,15 @@ def get_example(name: str):
         "error": {"code": "NOT_FOUND", "message": f"Example '{name}' not found"}
     }), 404
 
+_FILENAME_RE = re.compile(r"[A-Za-z0-9_\-. ()]{1,64}\.[ch]")
+
+def _safe_filename(name: Any) -> str:
+    """Editor tab name to report diagnostics under; 'main.c' unless it is a plain
+    .c/.h name. It is only ever used as a bare file name inside a private temp dir."""
+    if isinstance(name, str) and _FILENAME_RE.fullmatch(name) and ".." not in name:
+        return name
+    return "main.c"
+
 @api_bp.route("/analyze", methods=["POST"])
 def analyze():
     """Analyze C source code and return diagnostics, metrics, score, and recommendations."""
@@ -247,7 +256,7 @@ def analyze():
         options["disable"] = disabled_rules
 
     try:
-        res = analyze_source(code, filename="main.c", options=options)
+        res = analyze_source(code, filename=_safe_filename(data.get("filename")), options=options)
         return jsonify(res.to_dict()), 200
     except ValueError as ve:
         return jsonify({
@@ -302,6 +311,106 @@ def get_ast():
     finally:
         shutil.rmtree(temp_dir, ignore_errors=True)
 
+_CFG_TEXT_LIMIT = 60
+
+def _source_text(node, source_lines: List[str]) -> str:
+    """Source text a node spans (1-based, inclusive columns), whitespace collapsed."""
+    loc = getattr(node, "loc", None)
+    if loc is None or not (1 <= loc.line <= len(source_lines)):
+        return node.__class__.__name__
+    if loc.line == loc.end_line:
+        text = source_lines[loc.line - 1][loc.col - 1:loc.end_col]
+    else:
+        parts = [source_lines[loc.line - 1][loc.col - 1:]]
+        parts += source_lines[loc.line:loc.end_line - 1]
+        if loc.end_line <= len(source_lines):
+            parts.append(source_lines[loc.end_line - 1][:loc.end_col])
+        text = " ".join(parts)
+    text = " ".join(text.split())
+    if len(text) > _CFG_TEXT_LIMIT:
+        text = text[:_CFG_TEXT_LIMIT - 1] + "…"
+    return text or node.__class__.__name__
+
+def _statement_label(block, stmt, source_lines: List[str]) -> str:
+    """Display text for one CFG statement; branch conditions get their keyword."""
+    text = _source_text(stmt, source_lines)
+    if stmt is block.branch_cond and block.branch_node is not None:
+        kind = block.branch_node.__class__.__name__
+        if kind == "If":
+            return f"if ({text})"
+        if kind == "While":
+            return f"while ({text})"
+        if kind == "DoWhile":
+            return f"do … while ({text})"
+        if kind == "For":
+            return f"for (…; {text}; …)"
+    # A switch header block ends with the switch expression and jumps to case labels.
+    if stmt is block.statements[-1] and any(
+            s.statements and s.statements[0].__class__.__name__ in ("Case", "Default")
+            for s in block.succs):
+        return f"switch ({text})"
+    return text
+
+def _cfg_to_json(cfg, source_lines: List[str]) -> Dict[str, Any]:
+    """Serialize a CFG for display, skipping empty pass-through blocks.
+
+    The builder creates empty join/step blocks; an empty block with one successor is
+    replaced by that successor so the graph shows only blocks that hold code.
+    """
+    from sca.analysis.cfg import reachable_blocks
+
+    def is_passthrough(b) -> bool:
+        return (b not in (cfg.entry, cfg.exit) and not b.statements
+                and len(b.succs) == 1 and b.succs[0] is not b)
+
+    def resolve(b):
+        seen = set()
+        while is_passthrough(b) and b.bid not in seen:
+            seen.add(b.bid)
+            b = b.succs[0]
+        return b
+
+    reachable = reachable_blocks(cfg)
+    shown = [b for b in cfg.blocks if not is_passthrough(b)
+             and (b.bid in reachable or b.statements or b is cfg.exit)]
+    shown_ids = {b.bid for b in shown}
+
+    blocks_data = []
+    edges_data = []
+    for b in shown:
+        lines = [s.loc.line for s in b.statements if getattr(s, "loc", None)]
+        blocks_data.append({
+            "id": b.bid,
+            "label": "ENTRY" if b is cfg.entry else ("EXIT" if b is cfg.exit else f"B{b.bid}"),
+            "statements": [_statement_label(b, s, source_lines) for s in b.statements],
+            "statements_count": len(b.statements),
+            "line": min(lines) if lines else None,
+            "end_line": max(lines) if lines else None,
+            "is_entry": b is cfg.entry,
+            "is_exit": b is cfg.exit,
+            "reachable": b.bid in reachable,
+        })
+        targets = set()
+        for succ in b.succs:
+            target = resolve(succ)
+            if target.bid not in shown_ids or target.bid in targets:
+                continue
+            targets.add(target.bid)
+            kind = "normal"
+            if b.branch_cond is not None:
+                if succ is b.true_succ:
+                    kind = "true"
+                elif succ is b.false_succ:
+                    kind = "false"
+            edges_data.append({"from": b.bid, "to": target.bid, "kind": kind})
+
+    return {
+        "function": cfg.func.name,
+        "line": cfg.func.loc.line,
+        "blocks": blocks_data,
+        "edges": edges_data,
+    }
+
 @api_bp.route("/cfg", methods=["POST"])
 def get_cfg():
     """Return CFG basic blocks and directional edges for a function."""
@@ -319,7 +428,8 @@ def get_cfg():
         }), 400
 
     code = data["code"]
-    func_name = data.get("function", "main")
+    # Without a 'function' key, the CFG of every function in the source is returned.
+    func_name = data.get("function")
 
     if len(code.encode("utf-8")) > MAX_SOURCE_SIZE:
         return jsonify({
@@ -341,43 +451,23 @@ def get_cfg():
             }), 400
 
         ast = load_ast(cparse_data)
-        target_func = None
-        for item in ast.items:
-            if isinstance(item, FunctionDef) and item.name == func_name:
-                target_func = item
-                break
+        source_lines = code.splitlines()
+        funcs = [item for item in ast.items if isinstance(item, FunctionDef)]
 
+        if func_name is None:
+            return jsonify({
+                "ok": True,
+                "functions": [_cfg_to_json(build_cfg(fn), source_lines) for fn in funcs]
+            })
+
+        target_func = next((fn for fn in funcs if fn.name == func_name), None)
         if not target_func:
             return jsonify({
                 "ok": False,
                 "error": {"code": "NOT_FOUND", "message": f"Function '{func_name}' not found in source"}
             }), 404
 
-        cfg = build_cfg(target_func)
-        blocks_data = []
-        for b in cfg.blocks:
-            blocks_data.append({
-                "id": b.bid,
-                "label": f"Block {b.bid}" if b not in (cfg.entry, cfg.exit) else ("ENTRY" if b == cfg.entry else "EXIT"),
-                "statements_count": len(b.statements),
-                "is_entry": b == cfg.entry,
-                "is_exit": b == cfg.exit,
-            })
-
-        edges_data = []
-        for b in cfg.blocks:
-            for succ in b.succs:
-                edges_data.append({
-                    "from": b.bid,
-                    "to": succ.bid
-                })
-
-        return jsonify({
-            "ok": True,
-            "function": func_name,
-            "blocks": blocks_data,
-            "edges": edges_data
-        })
+        return jsonify({"ok": True, **_cfg_to_json(build_cfg(target_func), source_lines)})
     except Exception:
         return jsonify({
             "ok": False,
