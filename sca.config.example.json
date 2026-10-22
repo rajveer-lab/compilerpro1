@@ -28,6 +28,7 @@
     "high-complexity":     {"enabled": true, "severity": "warning", "max_complexity": 10},
     "index-out-of-range":  {"enabled": true, "severity": "error"},
     "division-by-zero":    {"enabled": true, "severity": "error"},
-    "constant-condition":  {"enabled": true, "severity": "warning"}
+    "constant-condition":  {"enabled": true, "severity": "warning"},
+    "contract-violation":  {"enabled": true, "severity": "error"}
   }
 }
