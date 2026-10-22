@@ -21,7 +21,7 @@ def test_rules_endpoint(client):
     assert res.status_code == 200
     data = res.get_json()
     assert data["ok"] is True
-    assert len(data["rules"]) == 21  # 18 original + 3 interval-analysis rules
+    assert len(data["rules"]) == 22  # 18 original + 3 interval-analysis rules + contract-violation
     rule_ids = {r["id"] for r in data["rules"]}
     assert "unused-variable" in rule_ids
     assert "missing-return" in rule_ids
@@ -92,6 +92,18 @@ def test_analyze_disabled_rules(client):
     assert data["diagnostics"] == []
     assert data["score"]["value"] == 100
 
+def test_analyze_uses_tab_filename(client):
+    code = "int main() {\n    int unused_x;\n    return 0;\n}\n"
+    def file_of(name):
+        data = client.post("/api/analyze", json={"code": code, "filename": name}).get_json()
+        return data["diagnostics"][0]["file"]
+    assert file_of("gradebook.c") == "gradebook.c"
+    assert file_of("ring buffer (2).c") == "ring buffer (2).c"
+    # Anything that is not a plain .c/.h name falls back to main.c
+    assert file_of("../../etc/passwd.c") == "main.c"
+    assert file_of("notes.txt") == "main.c"
+    assert file_of(None) == "main.c"
+
 def test_analyze_syntax_error(client):
     code = "int main( {"
     res = client.post("/api/analyze", json={"code": code})
@@ -145,6 +157,27 @@ def test_cfg_endpoint(client):
     assert len(data["blocks"]) >= 3
     assert len(data["edges"]) >= 2
 
+def test_cfg_all_functions(client):
+    code = (
+        "int f(int n) { int s = 0; for (int i = 0; i < n; i++) s += i; return s; }\n"
+        "int main() { if (f(3) > 2) return 1; return 0; }\n"
+    )
+    res = client.post("/api/cfg", json={"code": code})
+    assert res.status_code == 200
+    data = res.get_json()
+    assert data["ok"] is True
+    funcs = {f["function"]: f for f in data["functions"]}
+    assert set(funcs) == {"f", "main"}
+    loop = funcs["f"]
+    assert any("i < n" in s for b in loop["blocks"] for s in b["statements"])
+    kinds = {e["kind"] for e in loop["edges"]}
+    assert {"true", "false"} <= kinds
+    assert all(b["reachable"] for b in loop["blocks"])
+
+def test_cfg_parse_error(client):
+    res = client.post("/api/cfg", json={"code": "int main( {"})
+    assert res.get_json()["ok"] is False
+
 def test_cfg_function_not_found(client):
     code = "int main() { return 0; }"
     res = client.post("/api/cfg", json={"code": code, "function": "nonexistent"})
@@ -164,7 +197,8 @@ def test_index_page(client):
     assert res.status_code == 200
     html = res.get_data(as_text=True)
     assert "SCA Analyzer" in html
-    assert "main.c" in html
+    assert "file-tabs" in html      # file tab strip (tab names are drawn by tabs.js)
+    assert "btn-new-tab" in html
     assert "code-editor" in html
 
 def test_static_assets_served(client):
