@@ -1,4 +1,4 @@
-from typing import List, Set, Any
+from typing import List, Set, Any, Iterator, Tuple
 from sca.rules.base import Rule, Issue
 from sca.ast import nodes
 import re
@@ -18,39 +18,50 @@ class FunctionTooLongRule(Rule):
                     ))
         return issues
 
+CONTROL_NODES = (nodes.If, nodes.While, nodes.For, nodes.DoWhile, nodes.Switch)
+
+def control_depths(body: nodes.Node) -> Iterator[Tuple[nodes.Node, int]]:
+    """Yield (control statement, nesting depth) for every if/loop/switch under body.
+
+    An `else if` is a flat chain in source, so it stays at its parent if's depth
+    instead of nesting one level deeper per arm.
+    """
+    def visit(n: nodes.Node, depth: int, is_else_if: bool = False) -> Iterator[Tuple[nodes.Node, int]]:
+        if not n: return
+        new_depth = depth
+        if isinstance(n, CONTROL_NODES):
+            new_depth = depth if is_else_if else depth + 1
+            yield n, new_depth
+        if hasattr(n, '__dataclass_fields__'):
+            for field in n.__dataclass_fields__:
+                val = getattr(n, field)
+                if isinstance(val, nodes.Node):
+                    chained = isinstance(n, nodes.If) and field == 'else_branch' and isinstance(val, nodes.If)
+                    yield from visit(val, new_depth, chained)
+                elif isinstance(val, list):
+                    for i in val:
+                        if isinstance(i, nodes.Node):
+                            yield from visit(i, new_depth)
+
+    yield from visit(body, 0)
+
 class DeepNestingRule(Rule):
     def analyze(self, ast: nodes.TranslationUnit, filename: str) -> List[Issue]:
         issues = []
-        
-        def visit(n: nodes.Node, depth: int):
-            if not n: return
-            
-            new_depth = depth
-            if isinstance(n, (nodes.If, nodes.While, nodes.For, nodes.DoWhile, nodes.Switch)):
-                new_depth += 1
-                if new_depth > 4:
-                    issues.append(Issue(
-                        file=filename,
-                        line=n.loc.line,
-                        col=n.loc.col,
-                        message="Max nesting of blocks/loops/conditionals exceeds limit of 4.",
-                        rule_id="deep-nesting"
-                    ))
-                    
-            if hasattr(n, '__dataclass_fields__'):
-                for field in n.__dataclass_fields__:
-                    val = getattr(n, field)
-                    if isinstance(val, nodes.Node):
-                        visit(val, new_depth)
-                    elif isinstance(val, list):
-                        for i in val:
-                            if isinstance(i, nodes.Node):
-                                visit(i, new_depth)
-                                
+        max_depth = 4
         for item in ast.items:
             if isinstance(item, nodes.FunctionDef):
-                visit(item.body, 0)
-                
+                for n, depth in control_depths(item.body):
+                    # Report where nesting first crosses the limit, not again at every deeper level.
+                    if depth == max_depth + 1:
+                        issues.append(Issue(
+                            file=filename,
+                            line=n.loc.line,
+                            col=n.loc.col,
+                            message=f"Max nesting of blocks/loops/conditionals exceeds limit of {max_depth}.",
+                            rule_id="deep-nesting"
+                        ))
+
         return issues
 
 class TooManyParamsRule(Rule):

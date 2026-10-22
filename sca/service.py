@@ -13,6 +13,7 @@ from sca.frontend.loader import load_ast
 from sca.ast import nodes
 from sca.rules.base import Issue
 from sca.rules.registry import get_all_rules
+from sca.rules.ast_rules import control_depths
 from sca.scoring import compute_score, Score, RULE_SEVERITIES
 from sca.recommendations import build_recommendations, apply_edits
 
@@ -102,29 +103,8 @@ def compute_metrics(ast: nodes.TranslationUnit, source: Optional[str] = None) ->
         # 2. Parameters count
         params = len(item.params) if item.params else 0
 
-        # 3. Max nesting depth
-        max_depth = 0
-        def calc_depth(n: Optional[nodes.Node], current: int):
-            nonlocal max_depth
-            if not n:
-                return
-            new_depth = current
-            if isinstance(n, (nodes.If, nodes.While, nodes.For, nodes.DoWhile, nodes.Switch)):
-                new_depth += 1
-                if new_depth > max_depth:
-                    max_depth = new_depth
-
-            if hasattr(n, '__dataclass_fields__'):
-                for field_name in n.__dataclass_fields__:
-                    val = getattr(n, field_name)
-                    if isinstance(val, nodes.Node):
-                        calc_depth(val, new_depth)
-                    elif isinstance(val, list):
-                        for el in val:
-                            if isinstance(el, nodes.Node):
-                                calc_depth(el, new_depth)
-
-        calc_depth(item.body, 0)
+        # 3. Max nesting depth (same counting as the deep-nesting rule)
+        max_depth = max((depth for _, depth in control_depths(item.body)), default=0)
 
         # 4. Cyclomatic complexity
         complexity = 1
@@ -214,7 +194,17 @@ def analyze_source(
 
         raw_issues: List[Issue] = []
         for r in rules:
-            raw_issues.extend(r.analyze(ast, filename))
+            # One broken rule must not take the whole analysis down (SPEC §5).
+            try:
+                raw_issues.extend(r.analyze(ast, filename))
+            except Exception as exc:
+                raw_issues.append(Issue(
+                    file=filename,
+                    line=1,
+                    col=1,
+                    message=f"Rule {type(r).__name__} failed: {exc}",
+                    rule_id="internal-error",
+                ))
 
         # Apply inline suppressions
         suppressions = parse_suppressions(code)

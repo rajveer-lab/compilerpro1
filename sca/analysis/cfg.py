@@ -1,5 +1,24 @@
-from typing import List, Optional
+from typing import List, Optional, Set
 from sca.ast import nodes
+
+def is_constant_true(expr: Optional[nodes.Node]) -> bool:
+    """True for a nonzero integer literal condition such as `while (1)`."""
+    if isinstance(expr, nodes.IntLiteral):
+        value = parse_c_int(expr.text)
+        return value is not None and value != 0
+    return False
+
+def parse_c_int(text: str) -> Optional[int]:
+    """Parse a C integer literal (decimal, 0x hex, 0 octal, u/l suffixes); None if not one."""
+    t = text.rstrip("uUlL")
+    try:
+        if t.lower().startswith("0x"):
+            return int(t, 16)
+        if len(t) > 1 and t.startswith("0"):
+            return int(t, 8)
+        return int(t, 10)
+    except ValueError:
+        return None
 
 class BasicBlock:
     def __init__(self, bid: int):
@@ -121,11 +140,14 @@ class CFGBuilder:
             
         cond_b.add_statement(node.cond)
         cond_b.add_succ(body_b)
-        cond_b.add_succ(merge_b)
-        
+        # `while (1)` never exits through its condition, only through break/return,
+        # so the loop exit is reachable only via a break edge.
+        if not is_constant_true(node.cond):
+            cond_b.add_succ(merge_b)
+
         self.break_targets.append(merge_b)
         self.continue_targets.append(cond_b)
-        
+
         self.current_block = body_b
         self.visit(node.body)
         
@@ -280,6 +302,17 @@ class CFGBuilder:
         self.current_block.add_statement(node)
         self.current_block.add_succ(self.cfg.exit)
         self.current_block = None
+
+def reachable_blocks(cfg: CFG) -> Set[int]:
+    """Block ids reachable from the entry block."""
+    reachable: Set[int] = set()
+    worklist = [cfg.entry]
+    while worklist:
+        b = worklist.pop()
+        if b.bid not in reachable:
+            reachable.add(b.bid)
+            worklist.extend(b.succs)
+    return reachable
 
 def build_cfg(func: nodes.FunctionDef) -> CFG:
     builder = CFGBuilder(func)

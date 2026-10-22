@@ -1,7 +1,7 @@
 from typing import List, Set
 from sca.rules.base import Rule, Issue
 from sca.ast import nodes
-from sca.analysis.cfg import build_cfg, BasicBlock
+from sca.analysis.cfg import build_cfg, BasicBlock, reachable_blocks
 
 class UnreachableCodeRule(Rule):
     def analyze(self, ast: nodes.TranslationUnit, filename: str) -> List[Issue]:
@@ -9,15 +9,8 @@ class UnreachableCodeRule(Rule):
         for item in ast.items:
             if isinstance(item, nodes.FunctionDef):
                 cfg = build_cfg(item)
-                
-                reachable = set()
-                worklist = [cfg.entry]
-                while worklist:
-                    b = worklist.pop()
-                    if b.bid not in reachable:
-                        reachable.add(b.bid)
-                        worklist.extend(b.succs)
-                
+                reachable = reachable_blocks(cfg)
+
                 # Find connected components of unreachable blocks
                 unreachable_blocks = [b for b in cfg.blocks if b.bid not in reachable and b.statements]
                 visited_unreachable = set()
@@ -69,13 +62,19 @@ class MissingReturnRule(Rule):
             if isinstance(item, nodes.FunctionDef):
                 if item.name == 'main':
                     continue
-                if item.return_type.name == 'void' and not getattr(item.return_type, 'is_ptr', False):
+                # Pointer return types have no `name`; only a plain `void` is exempt.
+                if isinstance(item.return_type, nodes.BaseType) and item.return_type.name == 'void':
                     continue
-                    
+
                 cfg = build_cfg(item)
-                # Are there any predecessors to exit that are NOT Return statements?
+                reachable = reachable_blocks(cfg)
+                # Are there any reachable predecessors to exit that are NOT Return statements?
+                # (Unreachable ones, e.g. the empty merge block after an if/else that returns
+                # on both branches, never actually fall off the end.)
                 missing = False
                 for p in cfg.exit.preds:
+                    if p.bid not in reachable:
+                        continue
                     if not p.statements:
                         missing = True
                         break

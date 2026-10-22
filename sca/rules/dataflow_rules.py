@@ -1,9 +1,9 @@
 from typing import List, Set
 from sca.rules.base import Rule, Issue
 from sca.ast import nodes
-from sca.analysis.cfg import build_cfg
+from sca.analysis.cfg import build_cfg, reachable_blocks
 from sca.analysis.liveness import LivenessAnalysis
-from sca.rules.uninitialized import extract_detailed_usage
+from sca.rules.uninitialized import extract_detailed_usage, address_taken_names, is_scalar
 
 class DeadStoreRule(Rule):
     def analyze(self, ast: nodes.TranslationUnit, filename: str) -> List[Issue]:
@@ -21,7 +21,8 @@ class DeadStoreRule(Rule):
         local_vars = set()
         def find_locals(n: nodes.Node):
             if not n: return
-            if isinstance(n, nodes.VarDecl) and not getattr(n, 'is_global', False) and n.name:
+            if (isinstance(n, nodes.VarDecl) and not getattr(n, 'is_global', False) and n.name
+                    and n.storage != 'static' and is_scalar(n.type)):
                 local_vars.add(n.name)
             if hasattr(n, '__dataclass_fields__'):
                 for field in n.__dataclass_fields__:
@@ -33,11 +34,20 @@ class DeadStoreRule(Rule):
                             if isinstance(i, nodes.Node):
                                 find_locals(i)
         find_locals(func.body)
-        
+        # A pointer to x may read it later (int *p = &x; x = 2; use(*p)).
+        local_vars -= address_taken_names(func.body)
+        # Variables that are never read at all are reported once by unused-variable;
+        # flagging every store to them as well would double-count the same problem.
+        read_names = {name for name, _ in extract_detailed_usage(func.body)[0]}
+        local_vars &= read_names
+
         liveness = LivenessAnalysis(cfg)
         liveness.run()
-        
+        reachable = reachable_blocks(cfg)
+
         for b in cfg.blocks:
+            if b.bid not in reachable:
+                continue  # already reported by unreachable-code
             live = set(liveness.out_sets[b.bid])
             for stmt in reversed(b.statements):
                 r, w = extract_detailed_usage(stmt)

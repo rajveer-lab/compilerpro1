@@ -30,15 +30,31 @@ def test_cfg_if(tmp_path):
 
 def test_cfg_while(tmp_path):
     c_file = tmp_path / "test.c"
-    c_file.write_text("int main() { while (1) { break; } }")
+    c_file.write_text("int main() { int x = 3; while (x) { break; } }")
     data = run_cparse(str(c_file))
     ast = load_ast(data)
     func = get_func(ast, "main")
-    
+
     cfg = build_cfg(func)
-    
+
     # Check that there's a back edge or loop structure
     # Entry -> cond_b -> body_b -> cond_b
     assert len(cfg.entry.succs) == 1
     cond_b = cfg.entry.succs[0]
     assert len(cond_b.succs) == 2 # body and merge
+
+def test_cfg_while_true(tmp_path):
+    c_file = tmp_path / "test.c"
+    c_file.write_text("int main() { while (1) { break; } }")
+    data = run_cparse(str(c_file))
+    ast = load_ast(data)
+    func = get_func(ast, "main")
+
+    cfg = build_cfg(func)
+
+    # `while (1)` has no exit edge from its condition; the loop exit is
+    # reachable only through the break.
+    cond_b = cfg.entry.succs[0]
+    assert len(cond_b.succs) == 1
+    body_b = cond_b.succs[0]
+    assert any(s is not cond_b for s in body_b.succs)  # break -> merge

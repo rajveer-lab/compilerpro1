@@ -18,6 +18,7 @@ static void print_string(const char *s) {
         else if (*s == '\n') printf("\\n");
         else if (*s == '\r') printf("\\r");
         else if (*s == '\t') printf("\\t");
+        else if ((unsigned char)*s < 0x20) printf("\\u%04x", (unsigned char)*s);
         else printf("%c", *s);
         s++;
     }
@@ -326,7 +327,8 @@ static void print_node(Node *n, int level) {
 void print_json(const char *filename) {
     printf("{\n");
     printf("  \"schema_version\": 1,\n");
-    printf("  \"file\": \"%s\",\n", filename);
+    // The path can contain backslashes (Windows) or quotes, so it must be escaped too.
+    printf("  \"file\": "); print_string(filename); printf(",\n");
     print_errors_json();
     print_directives_json();
     

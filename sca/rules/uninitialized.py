@@ -51,6 +51,31 @@ def extract_detailed_usage(node: nodes.Node):
     visit(node, False)
     return reads, writes
 
+def is_scalar(t: nodes.Type) -> bool:
+    """Plain values and pointers. Arrays, structs and unknown typedefs are not tracked."""
+    return isinstance(t, (nodes.BaseType, nodes.PointerType))
+
+def address_taken_names(node: nodes.Node) -> Set[str]:
+    """Names of variables whose address is taken with `&x` anywhere under node."""
+    names: Set[str] = set()
+
+    def visit(n: nodes.Node):
+        if not n: return
+        if isinstance(n, nodes.Unary) and n.op == '&' and isinstance(n.operand, nodes.Identifier):
+            names.add(n.operand.name)
+        if hasattr(n, '__dataclass_fields__'):
+            for field in n.__dataclass_fields__:
+                val = getattr(n, field)
+                if isinstance(val, nodes.Node):
+                    visit(val)
+                elif isinstance(val, list):
+                    for item in val:
+                        if isinstance(item, nodes.Node):
+                            visit(item)
+
+    visit(node)
+    return names
+
 class UninitDataflow(DataflowAnalysis):
     def __init__(self, cfg, uninit_locals: Set[str]):
         super().__init__(cfg, forward=True)
@@ -90,11 +115,13 @@ class UninitializedVariableRule(Rule):
     def analyze_func(self, func: nodes.FunctionDef, filename: str) -> List[Issue]:
         issues = []
         
-        # 1. Collect all local uninitialized variables
+        # 1. Collect all local uninitialized scalar variables. Arrays and structs are
+        # filled element by element (a[0] = 1, p.x = 1), and `static` locals start at 0.
         uninit_locals = set()
         def find_locals(n: nodes.Node):
             if not n: return
-            if isinstance(n, nodes.VarDecl) and not n.is_global and n.init is None and n.name:
+            if (isinstance(n, nodes.VarDecl) and not n.is_global and n.init is None and n.name
+                    and n.storage != 'static' and is_scalar(n.type)):
                 uninit_locals.add(n.name)
             
             if hasattr(n, '__dataclass_fields__'):
@@ -108,7 +135,10 @@ class UninitializedVariableRule(Rule):
                                 find_locals(i)
         
         find_locals(func.body)
-        
+        # `scanf("%d", &n)` or `init(&n)` may write n through the pointer; we can't
+        # see that without alias analysis, so skip address-taken variables entirely.
+        uninit_locals -= address_taken_names(func.body)
+
         if not uninit_locals:
             return []
             

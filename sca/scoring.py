@@ -32,6 +32,9 @@ DEFAULT_WEIGHTS: Dict[str, int] = {
     "unused-function": 2,
     "magic-number": 2,
     "naming-convention": 1,
+
+    # A crashed rule is the analyzer's fault, not the code's
+    "internal-error": 0,
 }
 
 RULE_SEVERITIES: Dict[str, str] = {
@@ -39,6 +42,7 @@ RULE_SEVERITIES: Dict[str, str] = {
     "missing-return": "error",
     "uninitialized": "error",
     "uninitialized-variable": "error",
+    "internal-error": "error",
 
     "function-too-long": "warning",
     "deep-nesting": "warning",

@@ -100,6 +100,15 @@ def extract_symbol_name(message: str) -> Optional[str]:
     m = re.search(r"'([^']+)'", message)
     return m.group(1) if m else None
 
+def has_side_effect_ops(text: str) -> bool:
+    """True if the text contains ++ or -- (deleting it would drop the side effect)."""
+    return "++" in text or "--" in text
+
+def mentioned_elsewhere(name: str, lines: List[str], line: int) -> bool:
+    """True if `name` appears as a whole word on any line other than `line` (1-based)."""
+    pattern = re.compile(rf"\b{re.escape(name)}\b")
+    return any(pattern.search(text) for i, text in enumerate(lines, start=1) if i != line)
+
 def build_recommendations(
     diagnostics: List[Dict[str, Any]],
     source: str,
@@ -136,11 +145,15 @@ def build_recommendations(
             explanation = f"Variable '{var_name}' is declared but never read, so it adds clutter."
             stripped = line_text.strip()
             # Only safe to delete if line solely declares this variable without function calls
+            # or ++/--, and the name appears nowhere else (a later `x = 10;` would otherwise
+            # be left assigning to an undeclared variable).
             is_simple_decl = (
                 stripped.endswith(";") and
                 var_name in stripped and
                 "," not in stripped and
-                "(" not in stripped
+                "(" not in stripped and
+                not has_side_effect_ops(stripped) and
+                not mentioned_elsewhere(var_name, lines, line)
             )
             if is_simple_decl and line not in used_edit_lines:
                 safety = "safe"
@@ -250,11 +263,11 @@ def build_recommendations(
             title = f"Remove dead store to '{var_name}'"
             explanation = f"The value assigned to '{var_name}' is never read before being overwritten or function exit."
             stripped = line_text.strip()
+            # Only a plain `name = <expr>;` statement: a declaration line (any type, e.g.
+            # `long t = 0;`) must stay, and `x = i++;` would lose the increment.
             is_simple_assign = (
-                stripped.endswith(";") and
-                "=" in stripped and
-                "(" not in stripped and
-                not any(kw in stripped for kw in ["int ", "char ", "float ", "double ", "return "])
+                re.fullmatch(rf"{re.escape(var_name)}\s*=\s*[^;=(]*;", stripped) is not None and
+                not has_side_effect_ops(stripped)
             )
             if is_simple_assign and line not in used_edit_lines:
                 safety = "safe"

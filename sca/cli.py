@@ -160,7 +160,8 @@ def main():
 
         print(json.dumps(out, indent=2))
 
-        if out:
+        fail_on = {s.strip() for s in args.fail_on.split(",") if s.strip()}
+        if any(diag["severity"] in fail_on for diag in result.diagnostics):
             sys.exit(1)
 
     elif args.command == "web":

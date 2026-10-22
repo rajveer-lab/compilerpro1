@@ -2,6 +2,7 @@ from typing import List, Set, Dict, Tuple
 from sca.rules.base import Rule, Issue
 from sca.ast import nodes
 from sca.rules.uninitialized import extract_detailed_usage
+from sca.analysis.cfg import parse_c_int
 
 class UnusedFunctionRule(Rule):
     def analyze(self, ast: nodes.TranslationUnit, filename: str) -> List[Issue]:
@@ -89,7 +90,15 @@ class ShadowedVariableRule(Rule):
                     visit(stmt)
                 scopes.pop()
                 return
-                
+
+            # `for (int i = ...)` opens its own scope; i must not leak into the enclosing block.
+            if isinstance(n, nodes.For):
+                scopes.append(set())
+                for part in (n.init, n.cond, n.step, n.body):
+                    visit(part)
+                scopes.pop()
+                return
+
             if isinstance(n, nodes.VarDecl) and n.name:
                 for s in scopes[:-1]:
                     if n.name in s:
@@ -115,20 +124,21 @@ class ShadowedVariableRule(Rule):
 class ConstIndexOutOfBoundsRule(Rule):
     def analyze(self, ast: nodes.TranslationUnit, filename: str) -> List[Issue]:
         issues = []
-        
+
+        # Sizes are tracked per function (globals + that function's locals), so two
+        # functions that each declare a `buf` of different sizes don't mix them up.
         array_sizes: Dict[str, int] = {}
-        
+
         def record_arrays(n: nodes.Node):
             if not n: return
             if isinstance(n, nodes.VarDecl) and n.name:
                 if isinstance(n.type, nodes.ArrayType):
                     size_expr = n.type.size
                     if isinstance(size_expr, nodes.IntLiteral):
-                        try:
-                            array_sizes[n.name] = int(size_expr.text)
-                        except ValueError:
-                            pass
-            
+                        size = parse_c_int(size_expr.text)
+                        if size is not None:
+                            array_sizes[n.name] = size
+
             if hasattr(n, '__dataclass_fields__'):
                 for field in n.__dataclass_fields__:
                     val = getattr(n, field)
@@ -139,13 +149,12 @@ class ConstIndexOutOfBoundsRule(Rule):
                             if isinstance(i, nodes.Node):
                                 record_arrays(i)
         
-        record_arrays(ast)
-        
         def get_int_value(expr: nodes.Node):
             if isinstance(expr, nodes.IntLiteral):
-                return int(expr.text)
+                return parse_c_int(expr.text)
             if isinstance(expr, nodes.Unary) and expr.op == '-' and isinstance(expr.operand, nodes.IntLiteral):
-                return -int(expr.operand.text)
+                value = parse_c_int(expr.operand.text)
+                return -value if value is not None else None
             return None
 
         def check_bounds(n: nodes.Node):
@@ -175,6 +184,16 @@ class ConstIndexOutOfBoundsRule(Rule):
                             if isinstance(i, nodes.Node):
                                 check_bounds(i)
                                 
-        check_bounds(ast)
-        
+        for item in ast.items:
+            if isinstance(item, nodes.DeclStmt):
+                record_arrays(item)
+        global_sizes = dict(array_sizes)
+
+        for item in ast.items:
+            if isinstance(item, nodes.FunctionDef):
+                array_sizes.clear()
+                array_sizes.update(global_sizes)
+                record_arrays(item.body)
+                check_bounds(item.body)
+
         return issues
