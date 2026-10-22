@@ -29,22 +29,18 @@
     </div>
 
     <div class="topbar-right">
-      <select id="select-examples" class="select-dropdown" aria-label="Load Example Code">
-        <option value="" disabled selected>Examples...</option>
-      </select>
-
-      <button id="btn-upload" class="btn-icon" title="Upload C Source File" aria-label="Upload C source file from disk">
+      <button id="btn-upload" class="btn-icon" title="Upload C source files (each opens in a new tab)" aria-label="Upload C source files from disk">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="17 8 12 3 7 8"></polyline><line x1="12" y1="3" x2="12" y2="15"></line></svg>
         <span>Upload</span>
       </button>
-      <input type="file" id="file-upload-input" accept=".c,.h" style="display: none;" aria-hidden="true">
+      <input type="file" id="file-upload-input" accept=".c,.h" multiple style="display: none;" aria-hidden="true">
 
-      <button id="btn-download" class="btn-icon" title="Download C Source Code as main.c" aria-label="Download current code as main.c">
+      <button id="btn-download" class="btn-icon" title="Download the current tab's file" aria-label="Download the current tab's file">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg>
         <span>Download</span>
       </button>
 
-      <button id="btn-reset" class="btn-icon" title="Reset Code to Default Template" aria-label="Reset editor to default code template">
+      <button id="btn-reset" class="btn-icon" title="Reset the current tab to the default template" aria-label="Reset the current tab to the default code template">
         <span>Reset</span>
       </button>
 
@@ -69,9 +65,9 @@
     <!-- Left Editor Pane -->
     <section class="pane pane-editor" id="pane-editor" aria-label="Code Editor">
       <div class="editor-header">
-        <div class="file-tab">
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline><line x1="16" y1="13" x2="8" y2="13"></line><line x1="16" y1="17" x2="8" y2="17"></line><polyline points="10 9 9 9 8 9"></polyline></svg>
-          <span>main.c</span>
+        <div class="file-tabs-wrap">
+          <div class="file-tabs" id="file-tabs" role="tablist" aria-label="Open files"></div>
+          <button class="btn-new-tab" id="btn-new-tab" title="New file" aria-label="Open a new empty file">+</button>
         </div>
         <span class="stale-badge" id="stale-badge" title="Code modified since last run">Results out of date</span>
       </div>
@@ -105,6 +101,14 @@
         <button class="tab-btn" data-tab="recommendations" role="tab" aria-selected="false" id="tab-recommendations">
           <span>Recommendations</span>
           <span class="badge" id="badge-recommendations">0</span>
+        </button>
+        <button class="tab-btn" data-tab="contracts" role="tab" aria-selected="false" id="tab-contracts">
+          <span>Contracts</span>
+          <span class="badge" id="badge-contracts">0</span>
+        </button>
+        <button class="tab-btn" data-tab="learning" role="tab" aria-selected="false" id="tab-learning">
+          <span>Learning</span>
+          <span class="badge" id="badge-learning">0</span>
         </button>
         <button class="tab-btn" data-tab="score" role="tab" aria-selected="false" id="tab-score">
           <span>Score</span>
@@ -153,6 +157,20 @@
         </div>
       </div>
 
+      <!-- Contracts Panel -->
+      <div class="tab-panel" id="panel-contracts" role="tabpanel" aria-labelledby="tab-contracts">
+        <div id="contracts-container">
+          <p style="color: var(--text-secondary); font-size: 13px;">Inferred input contracts will appear here after running analysis.</p>
+        </div>
+      </div>
+
+      <!-- Learning Panel -->
+      <div class="tab-panel" id="panel-learning" role="tabpanel" aria-labelledby="tab-learning">
+        <div id="learning-container">
+          <p style="color: var(--text-secondary); font-size: 13px;">Misconceptions behind your issues will appear here after running analysis.</p>
+        </div>
+      </div>
+
       <!-- Score Panel -->
       <div class="tab-panel" id="panel-score" role="tabpanel" aria-labelledby="tab-score">
         <div id="score-container">
@@ -180,7 +198,7 @@
           <div class="empty-state">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><circle cx="12" cy="12" r="10"></circle><line x1="12" y1="8" x2="12" y2="12"></line><line x1="12" y1="16" x2="12.01" y2="16"></line></svg>
             <h3 style="font-weight: 600;">Control Flow Graph</h3>
-            <p style="font-size: 13px; max-width: 380px;">Control flow graphs can be inspected via the CLI using <code>sca cfg &lt;file.c&gt; &lt;func&gt;</code> or queried via <code>POST /api/cfg</code>.</p>
+            <p style="font-size: 13px; max-width: 380px;">The control flow graph of every function will appear here after running analysis.</p>
           </div>
         </div>
       </div>
