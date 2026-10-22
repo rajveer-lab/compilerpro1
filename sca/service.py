@@ -16,6 +16,8 @@ from sca.rules.registry import get_all_rules
 from sca.rules.ast_rules import control_depths
 from sca.scoring import compute_score, Score, RULE_SEVERITIES
 from sca.recommendations import build_recommendations, apply_edits
+from sca.analysis.contracts import unit_contracts
+from sca.misconceptions import diagnose, misconception_for
 
 MAX_SOURCE_SIZE = 100 * 1024  # 100 KB limit
 
@@ -30,6 +32,8 @@ class AnalysisResult:
     recommendations: List[Dict[str, Any]] = field(default_factory=list)
     projected_score: int = 100
     elapsed_ms: float = 0.0
+    contracts: List[Dict[str, Any]] = field(default_factory=list)
+    misconceptions: List[Dict[str, Any]] = field(default_factory=list)
 
     def to_dict(self) -> Dict[str, Any]:
         res: Dict[str, Any] = {
@@ -38,6 +42,8 @@ class AnalysisResult:
             "diagnostics": self.diagnostics,
             "summary": self.summary,
             "metrics": self.metrics,
+            "contracts": self.contracts,
+            "misconceptions": self.misconceptions,
             "recommendations": self.recommendations,
             "projected_score": self.projected_score,
             "elapsed_ms": self.elapsed_ms,
@@ -251,10 +257,19 @@ def analyze_source(
                 "rule_id": issue.rule_id,
                 "severity": severity,
             }
+            misconception = misconception_for(issue.rule_id)
+            if misconception is not None:
+                diag["misconception"] = misconception.id
             diagnostics.append(diag)
 
         # Compute metrics
         metrics = compute_metrics(ast, source=code)
+
+        # Inferred input contracts (shared with the contract-violation rule's run)
+        try:
+            contracts = [fc.to_dict() for fc in unit_contracts(ast)]
+        except Exception:
+            contracts = []
 
         # Compute score
         score = compute_score(filtered_issues)
@@ -279,6 +294,8 @@ def analyze_source(
             recommendations=recommendations,
             projected_score=projected_score,
             elapsed_ms=elapsed,
+            contracts=contracts,
+            misconceptions=diagnose(diagnostics),
         )
 
     finally:
