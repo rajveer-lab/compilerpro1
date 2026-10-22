@@ -112,6 +112,37 @@ Following the project rule "prefer a missed issue over flagging correct code":
 See `docs/KNOWN_LIMITATIONS.md` for what this can't do (path-insensitive merges, no
 inter-procedural analysis).
 
+## Input contracts
+
+`sca/analysis/contracts.py` turns the analysis around: instead of only warning about a
+bad value, it works out which **parameter values a function is safe for**.
+
+```c
+int get(int n) { int a[5] = {0}; return a[n]; }          /* requires 0 <= n <= 4 */
+int avg(int total, int count) { return total / count; }  /* requires count != 0  */
+void fill(int n) { int buf[10]; for (int i = 0; i < n; i++) buf[i] = i; }  /* n <= 10 */
+```
+```
+$ sca contracts file.c
+get() [line 1]       requires 0 <= n <= 4
+                       because it indexes 'a[n]' (5 elements) at line 1
+```
+
+How: the solver can start from an assumed range for a parameter
+(`IntervalAnalysis(..., assume={"n": Interval(0, 4)})`), and
+`possible_violations()` lists every index that is not provably in bounds and every
+divisor whose range contains 0. For each parameter, a value with the fewest violations
+is the anchor; violations it still has don't depend on the parameter and are ignored.
+A binary search grows the safe range from the anchor in both directions. Each boundary
+is then re-checked, because interval imprecision can create false ones (after
+`if (count == 0) return 0;` a range that straddles 0 still contains 0 on the other
+branch): if everything past it is safe it is dropped, otherwise the single value just
+past it must be unsafe on its own, or no contract is reported.
+
+The `contract-violation` rule then checks every call in the file against the callee's
+contract using the caller's own value ranges: `get(7)` *breaks* it, `get(i)` with `i` in
+[0, 5] *can break* it. Arguments the analysis knows nothing about are not reported.
+
 ## Code map
 
 | piece | where |
