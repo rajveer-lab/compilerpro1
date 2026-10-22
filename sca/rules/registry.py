@@ -8,6 +8,7 @@ from sca.rules.phase7 import UnusedFunctionRule, ShadowedVariableRule, ConstInde
 from sca.rules.cfg_rules import UnreachableCodeRule, MissingReturnRule, HighComplexityRule
 from sca.rules.dataflow_rules import DeadStoreRule
 from sca.rules.interval_rules import IndexOutOfRangeRule, DivisionByZeroRule, ConstantConditionRule
+from sca.rules.contract_rules import ContractViolationRule
 from sca.rules.ast_rules import (
     FunctionTooLongRule,
     DeepNestingRule,
@@ -174,6 +175,13 @@ RULE_CATALOG: List[Dict[str, Any]] = [
         "description": "Condition that is always false (or always true), so a branch or loop body never runs.",
         "tier": 4,
     },
+    {
+        "id": "contract-violation",
+        "name": "Contract Violation",
+        "default_severity": "error",
+        "description": "Call whose argument range breaks the callee's inferred input contract (e.g. get(7) when get requires 0 <= n <= 4).",
+        "tier": 4,
+    },
 ]
 
 def get_all_rules() -> List[Rule]:
@@ -200,4 +208,5 @@ def get_all_rules() -> List[Rule]:
         IndexOutOfRangeRule(),
         DivisionByZeroRule(),
         ConstantConditionRule(),
+        ContractViolationRule(),
     ]
