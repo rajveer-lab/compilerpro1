@@ -2,6 +2,8 @@
 
 Two components:
 
+
+
 1. **`cparse`** (C, Flex + Bison): lexes and parses a C subset and prints a JSON AST.
 2. **`sca`** (Python): runs `cparse`, then performs semantic analysis, builds control-flow
    graphs, runs dataflow analyses and quality rules, and reports diagnostics.
