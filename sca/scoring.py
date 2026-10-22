@@ -15,6 +15,7 @@ DEFAULT_WEIGHTS: Dict[str, int] = {
     "unsafe-function": 10,
     "index-out-of-range": 10,
     "division-by-zero": 10,
+    "contract-violation": 10,
 
     # Medium impact (4-5 pts)
     "constant-condition": 5,
@@ -48,6 +49,7 @@ RULE_SEVERITIES: Dict[str, str] = {
     "internal-error": "error",
     "index-out-of-range": "error",
     "division-by-zero": "error",
+    "contract-violation": "error",
 
     "constant-condition": "warning",
     "function-too-long": "warning",
