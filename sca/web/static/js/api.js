@@ -12,18 +12,8 @@ export async function fetchRules() {
   return await res.json();
 }
 
-export async function fetchExamples() {
-  const res = await fetch("/api/examples");
-  return await res.json();
-}
-
-export async function fetchExample(name) {
-  const res = await fetch(`/api/examples/${encodeURIComponent(name)}`);
-  return await res.json();
-}
-
-export async function analyzeCode(code, disabledRules = []) {
-  const payload = { code, disabled_rules: disabledRules };
+export async function analyzeCode(code, disabledRules = [], filename = "main.c") {
+  const payload = { code, disabled_rules: disabledRules, filename };
   const res = await fetch("/api/analyze", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
@@ -45,11 +35,13 @@ export async function fetchAst(code) {
   return await res.json();
 }
 
-export async function fetchCfg(code, funcName = "main") {
+/** Fetch CFGs. With no funcName the server returns every function in the source. */
+export async function fetchCfg(code, funcName = null) {
+  const payload = funcName ? { code, function: funcName } : { code };
   const res = await fetch("/api/cfg", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ code, function: funcName }),
+    body: JSON.stringify(payload),
   });
   return await res.json();
 }
