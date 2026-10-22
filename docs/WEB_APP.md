@@ -42,14 +42,14 @@ The interface is structured as a dual-pane workspace with a draggable horizontal
 
 ### Top Navigation Bar
 - **Logo & Title:** "SCA Analyzer" with a C99 language chip.
-- **Examples Dropdown:** Instant pre-loaded C programs (`clean.c`, `smelly.c`, `security_bugs.c`, `flow_issues.c`, `complex_refactor.c`).
-- **Upload (`.c`, `.h`):** Upload source files from local disk into the editor.
-- **Download:** Save the current editor buffer to your machine as `main.c`.
-- **Reset:** Revert code back to the default template.
+- **Upload (`.c`, `.h`):** Upload one or more source files; each opens in its own editor tab (an empty current tab is reused for the first).
+- **Download:** Save the current tab's code under the tab's file name.
+- **Reset:** Revert the current tab back to the default template.
 - **Theme Toggle:** Switch between sleek dark mode (default) and crisp light mode (persisted in `localStorage`).
 - **Run Button:** Prominent green button (`Ctrl+Enter` / `Cmd+Enter`) with active spinner while analyzing.
 
 ### Left Pane: Code Editor
+- **File Tabs:** Several files open at once. `+` opens a new empty file, `×` closes a tab (the last one stays), double-click (or F2) renames. Each tab keeps its own undo history, cursor, analysis results, Score before/after comparison and selected CFG function; switching tabs shows that file's last results without re-running. Each file is analyzed on its own (contracts and calls are checked within one file). Open tabs are saved in the browser's `localStorage` and restored on reload.
 - **Offline Vendored CodeMirror 5:** Full C syntax highlighting, bracket matching, and auto-indent. Zero runtime CDN dependencies.
 - **Inline Gutter Markers:** Color-coded icons (`!`, `▲`, `i`) on affected lines.
 - **Wavy Text Underlines:** Pinpoints exact error ranges directly in the code buffer.
@@ -69,18 +69,33 @@ The interface is structured as a dual-pane workspace with a draggable horizontal
    - **Before/After Diff Preview:** Monospace visual diff displaying lines removed (`-`) and inserted (`+`).
    - **Apply fix Button:** Modifies the editor buffer and re-runs analysis. Reverts cleanly with `Ctrl+Z`.
    - **Stale Detection:** If code is changed in the editor, out-of-date fix buttons are automatically disabled with *"Stale (code changed)"*.
-3. **Score Tab:**
+3. **Contracts Tab:**
+   - One card per function that needs safe inputs: the inferred contract (e.g. `0 <= n <= 4`)
+     and the line that needs it ("because it indexes 'a[n]' (5 elements) at line 6").
+   - **Insert as comment** adds `/* sca: requires ... */` above the function (or updates it).
+   - Functions with no input constraints are listed at the bottom.
+4. **Learning Tab:**
+   - Misconception cards for the current code: the wrong belief, the correct mental model,
+     the fix, and the lines involved. Output cards also name their misconception.
+   - **Your profile:** distinct mistakes per misconception across runs, stored only in this
+     browser (`localStorage`), with a Reset button.
+5. **Score Tab:**
    - **Animated Circular SVG Gauge:** Displays score (0–100) and letter grade with color transitions (A green, B blue, C amber, D orange, F red).
    - **Deductions Breakdown:** Horizontal progress bars displaying penalties deducted by each rule, sorted by impact.
-4. **Metrics Tab:**
+6. **Metrics Tab:**
    - Per-function summary table: Function Name, Lines of Code (LOC), Parameter count, Max Nesting Depth, and Cyclomatic Complexity.
    - Highlighted warning pills when metrics exceed established thresholds (LOC > 50, Params > 5, Nesting > 4, Complexity > 10).
-5. **AST Tab:**
+7. **AST Tab:**
    - Collapsible hierarchical tree view of the JSON AST.
    - "Expand All" and "Collapse All" controls.
    - Clickable line:col tags on nodes that navigate and highlight that construct in the code editor.
-6. **CFG Tab:**
-   - Control flow graph summary and CLI instructions (`sca cfg <file.c> <func>`).
+8. **CFG Tab:**
+   - Drawn automatically on every Run for every function in the editor; one button per function.
+   - Each block shows its source lines; empty join blocks are folded away.
+   - Branch edges are marked **T** (green) / **F** (red), loop back edges are dashed blue, and
+     unreachable blocks are drawn dashed amber.
+   - Header shows block count, edge count and cyclomatic complexity (E − N + 2).
+   - Clicking a block jumps to its first line in the editor.
 
 ---
 
@@ -105,7 +120,7 @@ Checks health status and verifies that the `cparse` binary exists and is executa
   ```
 
 ### `GET /api/rules`
-Lists all 18 registered analysis rules.
+Lists all 22 registered analysis rules.
 - **Response (200):**
   ```json
   {
@@ -133,7 +148,8 @@ Analyzes C source code string and returns complete analysis results.
   ```json
   {
     "code": "int main() { int x; return 0; }",
-    "disabled_rules": ["magic-number"]
+    "disabled_rules": ["magic-number"],
+    "filename": "main.c"
   }
   ```
 - **Response (200):**
@@ -192,10 +208,19 @@ Generates the JSON AST from `cparse` for the supplied C code.
 - **Request Body:** `{"code": "..."}`
 - **Response (200):** `{"ok": true, "ast": { "schema_version": 1, "unit": { ... } }}`
 
+`/api/analyze` responses also include `"contracts"` (per function: `function`, `line`,
+`contracts: [{param, text, allowed, reasons}]`, `complete`) and `"misconceptions"`
+(`id`, `title`, `explanation`, `fix`, `lines`, `rule_ids`); diagnostics that map to a
+misconception carry its `"misconception"` id.
+
 ### `POST /api/cfg`
-Returns basic blocks and directional edges for a given function.
-- **Request Body:** `{"code": "...", "function": "main"}`
-- **Response (200):** `{"ok": true, "function": "main", "blocks": [...], "edges": [...]}`
+Returns basic blocks and directional edges for one function, or for every function when
+`function` is omitted.
+- **Request Body:** `{"code": "...", "function": "main"}` or `{"code": "..."}`
+- **Response (200), one function:** `{"ok": true, "function": "main", "line": 1, "blocks": [...], "edges": [...]}`
+- **Response (200), all functions:** `{"ok": true, "functions": [{"function": "main", "line": 1, "blocks": [...], "edges": [...]}, ...]}`
+- Each block: `{"id", "label", "statements": ["int x = 0;", "if (x > 3)"], "statements_count", "line", "end_line", "is_entry", "is_exit", "reachable"}`.
+- Each edge: `{"from", "to", "kind"}` where `kind` is `"true"`, `"false"` (branch edges) or `"normal"`.
 
 ---
 
