@@ -3,9 +3,16 @@
  */
 
 import { initTheme } from "./theme.js";
-import { initEditor, getCode, setCode, resetCode, setDiagnosticsMarkers, clearMarkers } from "./editor.js";
-import { initPanels, renderResults, renderAst } from "./panels.js";
-import { analyzeCode, fetchAst, fetchExamples, fetchExample } from "./api.js";
+import {
+  initEditor, getCode, setCode, resetCode, setDiagnosticsMarkers, clearMarkers,
+  getActiveTab, onTabsChanged, openTab, renameTab,
+} from "./editor.js";
+import { initTabStrip } from "./tabs.js";
+import { initPanels, renderResults, renderAst, resetScoreBaseline } from "./panels.js";
+import { renderCfg } from "./cfg_viewer.js";
+import { renderContracts } from "./contracts.js";
+import { renderLearning } from "./learning.js";
+import { analyzeCode, fetchAst, fetchCfg } from "./api.js";
 
 let isRunning = false;
 let liveAnalysisTimer = null;
@@ -17,8 +24,10 @@ document.addEventListener("DOMContentLoaded", async () => {
   // 2. Initialize Panels & Tabs with Fix Handlers
   initPanels(handleApplyFix, handleApplyAllSafe);
 
-  // 3. Initialize CodeMirror Editor
+  // 3. Initialize CodeMirror Editor and its file tabs
   initEditor(handleRun, handleCodeChange);
+  initTabStrip();
+  onTabsChanged(handleTabsChanged);
 
   // 4. Initialize Split Pane Resizer
   initSplitPane();
@@ -26,10 +35,7 @@ document.addEventListener("DOMContentLoaded", async () => {
   // 5. Initialize Top Bar Controls
   initTopBarControls();
 
-  // 6. Populate Examples
-  await loadExamplesDropdown();
-
-  // 7. Initial Run
+  // 6. Initial Run
   handleRun();
 });
 
@@ -37,11 +43,14 @@ export async function handleRun() {
   if (isRunning) return;
   const runBtn = document.getElementById("btn-run");
   const parserStatus = document.getElementById("parser-status");
-  const timeElapsed = document.getElementById("time-elapsed");
 
+  // Results belong to the tab that was active when the run started, even if the user
+  // switches tabs while it is in flight.
+  const tab = getActiveTab();
   const code = getCode();
   if (!code.trim()) {
-    clearMarkers();
+    tab.state.run = null;
+    showEmptyFile();
     return;
   }
 
@@ -53,34 +62,13 @@ export async function handleRun() {
   if (parserStatus) parserStatus.textContent = "Analyzing...";
 
   try {
-    const [result, astResult] = await Promise.all([
-      analyzeCode(code),
-      fetchAst(code).catch(() => null)
+    const [result, astResult, cfgResult] = await Promise.all([
+      analyzeCode(code, [], tab.name),
+      fetchAst(code).catch(() => null),
+      fetchCfg(code).catch(() => null)
     ]);
-
-    // Update status bar
-    if (timeElapsed) timeElapsed.textContent = `${result.elapsed_ms || 0} ms`;
-    if (parserStatus) {
-      if (result.parse_errors && result.parse_errors.length > 0) {
-        parserStatus.textContent = "Syntax Error";
-        parserStatus.style.color = "var(--severity-error)";
-      } else {
-        parserStatus.textContent = "Ready";
-        parserStatus.style.color = "var(--text-secondary)";
-      }
-    }
-
-    // Set editor inline markers and gutter badges
-    setDiagnosticsMarkers(result.diagnostics || [], result.recommendations || []);
-
-    // Render results panels
-    renderResults(result, code);
-
-    // Render AST tree
-    if (astResult && astResult.ok && astResult.ast) {
-      renderAst(astResult.ast);
-    }
-
+    tab.state.run = { result, astResult, cfgResult, code };
+    if (getActiveTab() === tab) renderRun(tab.state.run);
   } catch (err) {
     if (parserStatus) {
       parserStatus.textContent = "Error";
@@ -93,6 +81,87 @@ export async function handleRun() {
       runBtn.classList.remove("loading");
       runBtn.disabled = false;
     }
+    // The user switched to a tab that has not been analyzed yet while this ran.
+    const now = getActiveTab();
+    if (now && now !== tab && !now.state.run) handleRun();
+  }
+}
+
+/** Show one tab's stored results in the editor and every results panel. */
+function renderRun(run) {
+  const { result, astResult, cfgResult, code } = run;
+  const parserStatus = document.getElementById("parser-status");
+  const timeElapsed = document.getElementById("time-elapsed");
+
+  // Update status bar
+  if (timeElapsed) timeElapsed.textContent = `${result.elapsed_ms || 0} ms`;
+  if (parserStatus) {
+    if (result.parse_errors && result.parse_errors.length > 0) {
+      parserStatus.textContent = "Syntax Error";
+      parserStatus.style.color = "var(--severity-error)";
+    } else {
+      parserStatus.textContent = "Ready";
+      parserStatus.style.color = "var(--text-secondary)";
+    }
+  }
+
+  // Set editor inline markers and gutter badges
+  setDiagnosticsMarkers(result.diagnostics || [], result.recommendations || []);
+
+  // Render results panels
+  renderResults(result, code);
+  // null tells both tabs the code did not parse
+  const parsed = !(result.parse_errors && result.parse_errors.length > 0);
+  renderContracts(parsed ? (result.contracts || []) : null, code, handleApplyAllSafe);
+  renderLearning(parsed ? (result.misconceptions || []) : null, code);
+
+  // Render AST tree
+  if (astResult && astResult.ok && astResult.ast) {
+    renderAst(astResult.ast);
+  }
+
+  // Render control flow graphs for every function
+  renderCfg(cfgResult);
+
+  // The tab's code may have been edited since these results were computed.
+  const staleBadge = document.getElementById("stale-badge");
+  if (staleBadge) staleBadge.style.display = getCode() !== code ? "inline-block" : "none";
+}
+
+/** Results panels for a tab with no code in it. */
+function showEmptyFile() {
+  clearMarkers();
+  const message = `
+    <div class="empty-state">
+      <h3 style="font-weight: 600;">Empty File</h3>
+      <p style="font-size: 13px;">Write or paste C code in this tab, then click <strong>Run</strong>.</p>
+    </div>`;
+  for (const id of ["output-diagnostics-container", "recommendations-container", "contracts-container",
+                    "learning-container", "score-container", "metrics-container", "ast-container",
+                    "cfg-container"]) {
+    const el = document.getElementById(id);
+    if (el) el.innerHTML = message;
+  }
+  for (const id of ["badge-output", "badge-recommendations", "badge-contracts", "badge-learning"]) {
+    const el = document.getElementById(id);
+    if (el) el.textContent = "0";
+  }
+  const parserStatus = document.getElementById("parser-status");
+  if (parserStatus) {
+    parserStatus.textContent = "Ready";
+    parserStatus.style.color = "var(--text-secondary)";
+  }
+}
+
+/** Another tab became active: show its results, analyzing it first if it never was. */
+function handleTabsChanged(switched) {
+  if (!switched) return;
+  if (liveAnalysisTimer) clearTimeout(liveAnalysisTimer);
+  const tab = getActiveTab();
+  if (tab && tab.state.run) {
+    renderRun(tab.state.run);
+  } else {
+    handleRun();
   }
 }
 
@@ -220,16 +289,28 @@ function initTopBarControls() {
   const fileInput = document.getElementById("file-upload-input");
   if (uploadBtn && fileInput) {
     uploadBtn.addEventListener("click", () => fileInput.click());
-    fileInput.addEventListener("change", (e) => {
-      const file = e.target.files[0];
-      if (!file) return;
-      const reader = new FileReader();
-      reader.onload = (event) => {
-        setCode(event.target.result);
-        handleRun();
-      };
-      reader.readAsText(file);
+    // Every chosen file opens in its own tab; an empty current tab is reused for the first.
+    fileInput.addEventListener("change", async (e) => {
+      const files = [...e.target.files];
       fileInput.value = "";
+      for (const file of files) {
+        let text;
+        try {
+          text = await file.text();
+        } catch (err) {
+          showErrorBanner(`Could not read '${file.name}'`);
+          continue;
+        }
+        const current = getActiveTab();
+        if (current && !getCode().trim()) {
+          renameTab(current.id, file.name);
+          current.state = {};   // new file: no old results or before/after comparison
+          setCode(text);
+          handleRun();
+        } else {
+          openTab(file.name, text);
+        }
+      }
     });
   }
 
@@ -241,7 +322,7 @@ function initTopBarControls() {
       const url = URL.createObjectURL(blob);
       const a = document.createElement("a");
       a.href = url;
-      a.download = "main.c";
+      a.download = (getActiveTab() && getActiveTab().name) || "main.c";
       document.body.appendChild(a);
       a.click();
       document.body.removeChild(a);
@@ -252,44 +333,14 @@ function initTopBarControls() {
   const resetBtn = document.getElementById("btn-reset");
   if (resetBtn) {
     resetBtn.addEventListener("click", () => {
-      if (confirm("Reset editor to default template? Current edits will be lost.")) {
+      const name = (getActiveTab() && getActiveTab().name) || "this file";
+      if (confirm(`Reset "${name}" to the default template? Its current code will be lost.`)) {
+        resetScoreBaseline();
         resetCode();
         handleRun();
       }
     });
   }
-}
-
-async function loadExamplesDropdown() {
-  const select = document.getElementById("select-examples");
-  if (!select) return;
-
-  try {
-    const data = await fetchExamples();
-    if (data.ok && data.examples) {
-      select.innerHTML = `<option value="" disabled selected>Examples...</option>`;
-      for (const ex of data.examples) {
-        const opt = document.createElement("option");
-        opt.value = ex.id;
-        opt.textContent = `${ex.title} (${ex.id})`;
-        select.appendChild(opt);
-      }
-
-      select.addEventListener("change", async () => {
-        const selectedId = select.value;
-        if (!selectedId) return;
-        try {
-          const detail = await fetchExample(selectedId);
-          if (detail.ok && detail.code) {
-            setCode(detail.code);
-            handleRun();
-          }
-        } catch (e) {
-          showErrorBanner(`Failed to load example '${selectedId}'`);
-        }
-      });
-    }
-  } catch (e) {}
 }
 
 function showErrorBanner(message) {
