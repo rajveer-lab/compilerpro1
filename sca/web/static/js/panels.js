@@ -2,11 +2,12 @@
  * Panels and Results View Module (Tabs, Output, Recommendations, Score, Metrics, AST).
  */
 
-import { jumpToLine } from "./editor.js";
+import { jumpToLine, getActiveTab } from "./editor.js";
 import { renderDiffPreview } from "./diff.js";
 import { renderAstTree } from "./ast_viewer.js";
 
 let currentDiagnostics = [];
+let currentMisconceptions = {};
 let currentRecommendations = [];
 let currentScore = null;
 let currentMetrics = [];
@@ -78,6 +79,7 @@ export function renderResults(result, sourceCode) {
   }
 
   currentDiagnostics = result.diagnostics || [];
+  currentMisconceptions = Object.fromEntries((result.misconceptions || []).map(m => [m.id, m]));
   currentRecommendations = result.recommendations || [];
   currentScore = result.score;
   currentMetrics = result.metrics || [];
@@ -169,6 +171,7 @@ function renderDiagnosticsList() {
     const lineNum = d.line;
     const colNum = d.col || 1;
     const lineSnippet = (lines[lineNum - 1] !== undefined) ? lines[lineNum - 1].trim() : "";
+    const misconception = d.misconception ? currentMisconceptions[d.misconception] : null;
 
     html += `
       <div class="diag-card ${sev}" data-line="${lineNum}" data-col="${colNum}">
@@ -178,6 +181,7 @@ function renderDiagnosticsList() {
         </div>
         <div class="diag-msg">${escapeHtml(d.message)}</div>
         ${lineSnippet ? `<div class="diag-snippet">${escapeHtml(lineSnippet)}</div>` : ""}
+        ${misconception ? `<div class="diag-misconception" title="${escapeHtml(misconception.explanation)}">Misconception: "${escapeHtml(misconception.title)}" (see Learning tab)</div>` : ""}
       </div>
     `;
   }
@@ -371,15 +375,10 @@ function renderScore(scoreObj, projectedScore) {
           <span>Total Issues Found:</span>
           <strong>${issuesCount}</strong>
         </div>
-        ${(projectedScore !== undefined && projectedScore > score) ? `
-          <div class="projected-score-box">
-            <span>Projected Score:</span>
-            <strong>${projectedScore}/100</strong>
-            <span class="projected-gain">(+${projectedScore - score} pts with safe fixes)</span>
-          </div>
-        ` : ""}
       </div>
     </div>
+
+    ${renderScoreComparison(scoreObj, projectedScore)}
 
     <div class="deductions-section">
       <h4 class="section-title">Score Deductions by Rule</h4>
@@ -415,6 +414,157 @@ function renderScore(scoreObj, projectedScore) {
 
   html += `</div>`;
   container.innerHTML = html;
+
+  const resetBtn = document.getElementById("btn-score-baseline");
+  if (resetBtn) {
+    resetBtn.addEventListener("click", () => {
+      setBaseline(snapshotScore(scoreObj, currentDiagnostics));
+      renderScore(scoreObj, projectedScore);
+    });
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Before / after comparison. The baseline is the score when the user started fixing:
+// taken on the first successful run, and again after Upload, Reset, or the
+// "Start new comparison" button. Fixes applied from Recommendations and manual edits
+// both count, so the "Now" column shows the total effect of everything changed since.
+// ---------------------------------------------------------------------------
+
+// Kept per editor tab (tab.state.scoreBaseline), so each open file has its own comparison.
+function getBaseline() {
+  const tab = getActiveTab();
+  return tab ? tab.state.scoreBaseline || null : null;
+}
+
+function setBaseline(baseline) {
+  const tab = getActiveTab();
+  if (tab) tab.state.scoreBaseline = baseline;
+}
+
+function snapshotScore(scoreObj, diagnostics) {
+  const byRule = {};
+  for (const d of diagnostics) byRule[d.rule_id] = (byRule[d.rule_id] || 0) + 1;
+  return {
+    value: scoreObj.value,
+    grade: scoreObj.grade,
+    issues: diagnostics.length,
+    byRule,
+    functions: currentMetrics.map(m => m.function),
+    time: new Date(),
+  };
+}
+
+/**
+ * True when the analyzed code looks like a different program from the baseline's,
+ * e.g. new code pasted over the old and Run clicked. Fixes and edits keep (almost)
+ * the same functions; a different program shares few or none.
+ */
+function isDifferentProgram(baseline) {
+  const before = new Set(baseline.functions || []);
+  const now = new Set(currentMetrics.map(m => m.function));
+  if (before.size === 0 && now.size === 0) return false;
+  const shared = [...now].filter(f => before.has(f)).length;
+  return shared / Math.max(before.size, now.size) < 0.5;
+}
+
+/** Forget the baseline; the next successful run becomes the new "before". */
+export function resetScoreBaseline() {
+  setBaseline(null);
+}
+
+function scoreColor(score) {
+  if (score < 60) return "#f85149";
+  if (score < 70) return "#db6d28";
+  if (score < 80) return "#d29922";
+  if (score < 90) return "#388bfd";
+  return "#2ea043";
+}
+
+function renderScoreComparison(scoreObj, projectedScore) {
+  if (!getBaseline() || isDifferentProgram(getBaseline())) {
+    setBaseline(snapshotScore(scoreObj, currentDiagnostics));
+  }
+  const before = getBaseline();
+  const now = scoreObj.value;
+  const delta = now - before.value;
+  const issueDelta = currentDiagnostics.length - before.issues;
+
+  // Estimate for the fixes still on offer: every recommendation with an edit that
+  // still matches the code. Counted once per edited line; one edit can fix more than
+  // one issue (e.g. an off-by-one loop), so this errs low.
+  const lines = currentSource.split("\n");
+  const seen = new Set();
+  let autoGain = 0;
+  let autoCount = 0;
+  for (const rec of currentRecommendations) {
+    if (!rec.edits || rec.edits.length === 0) continue;
+    const stale = rec.edits.some(e => e.expected_old && e.expected_old.length > 0 &&
+      JSON.stringify(lines.slice(e.line_start - 1, e.line_end)) !== JSON.stringify(e.expected_old));
+    const key = rec.edits.map(e => `${e.line_start}:${e.line_end}`).join(",");
+    if (stale || seen.has(key)) continue;
+    seen.add(key);
+    autoGain += rec.score_gain;
+    autoCount++;
+  }
+  const afterAll = Math.min(100, now + autoGain);
+  const afterSafe = (projectedScore !== undefined) ? projectedScore : now;
+
+  const card = (label, value, sub, extraClass = "") => `
+    <div class="score-compare-card ${extraClass}">
+      <span class="score-compare-label">${label}</span>
+      <span class="score-compare-value" style="color: ${scoreColor(value)};">${value}<small>/100</small></span>
+      <span class="score-compare-sub">${sub}</span>
+    </div>`;
+  const signed = (n) => (n > 0 ? `+${n}` : `${n}`);
+  const deltaClass = delta > 0 ? "up" : (delta < 0 ? "down" : "same");
+
+  let html = `
+    <div class="score-compare-section">
+      <div class="score-compare-header">
+        <h4 class="section-title">Before vs After Fixes</h4>
+        <button class="btn-ast-tool" id="btn-score-baseline" title="Use the current score as the new 'before'">Start new comparison</button>
+      </div>
+      <div class="score-compare-row">
+        ${card("Before", before.value, `${before.issues} issues · ${escapeHtml(before.grade)}`)}
+        <span class="score-compare-arrow" aria-hidden="true">&rarr;</span>
+        ${card("Now", now, `${currentDiagnostics.length} issues · <span class="score-delta ${deltaClass}">${signed(delta)} pts</span>`, "current")}
+        <span class="score-compare-arrow" aria-hidden="true">&rarr;</span>
+        ${card(autoCount ? `After ${autoCount} remaining fix${autoCount === 1 ? "" : "es"}` : "After fixes",
+               afterAll,
+               autoCount ? `≈ estimate · safe fixes only: ${afterSafe}` : "no automatic fixes left", "projected")}
+      </div>`;
+
+  // Which issue types changed since the baseline
+  const rules = new Set([...Object.keys(before.byRule), ...currentDiagnostics.map(d => d.rule_id)]);
+  const nowByRule = {};
+  for (const d of currentDiagnostics) nowByRule[d.rule_id] = (nowByRule[d.rule_id] || 0) + 1;
+  const changed = [...rules]
+    .map(r => ({ rule: r, before: before.byRule[r] || 0, now: nowByRule[r] || 0 }))
+    .filter(r => r.before !== r.now)
+    .sort((a, b) => (a.now - a.before) - (b.now - b.before));
+
+  if (changed.length === 0) {
+    html += `<p class="score-compare-hint">Apply fixes from the Recommendations tab, or edit the code and run again: the change shows up here.</p>`;
+  } else {
+    html += `
+      <table class="score-compare-table">
+        <thead><tr><th>Issue type</th><th>Before</th><th>Now</th><th>Change</th></tr></thead>
+        <tbody>
+          ${changed.map(r => {
+            const d = r.now - r.before;
+            return `<tr>
+              <td><code>${escapeHtml(r.rule)}</code></td>
+              <td>${r.before}</td><td>${r.now}</td>
+              <td class="score-delta ${d < 0 ? "up" : "down"}">${d < 0 ? `${d} fixed` : `+${d} new`}</td>
+            </tr>`;
+          }).join("")}
+        </tbody>
+      </table>
+      <p class="score-compare-hint">Issues ${before.issues} &rarr; ${currentDiagnostics.length} (${signed(issueDelta)}) since ${before.time.toLocaleTimeString()}.</p>`;
+  }
+  html += `</div>`;
+  return html;
 }
 
 function renderScoreEmpty(msg) {
