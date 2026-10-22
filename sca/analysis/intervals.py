@@ -375,23 +375,26 @@ def _is_literal(e: nodes.Node) -> bool:
 
 IndexHook = Callable[[nodes.Index, Interval], None]
 DivideHook = Callable[[nodes.Node, str, nodes.Expr, Interval], None]
+CallHook = Callable[[nodes.Call, List[Interval]], None]
 
 
 class Evaluator:
     """Evaluates expressions to intervals, applying their assignments to the state.
 
-    The optional hooks are called with the index range at every `a[i]` and the divisor
-    range at every `/` and `%`; the solver runs without hooks, the rules run one final
-    pass with them once the states are stable.
+    The optional hooks are called with the index range at every `a[i]`, the divisor
+    range at every `/` and `%`, and the argument ranges at every call; the solver runs
+    without hooks, the rules run one final pass with them once the states are stable.
     """
 
     def __init__(self, tracked: Dict[str, Interval], constants: Dict[str, int],
                  on_index: Optional[IndexHook] = None,
-                 on_divide: Optional[DivideHook] = None):
+                 on_divide: Optional[DivideHook] = None,
+                 on_call: Optional[CallHook] = None):
         self.tracked = tracked      # tracked variable -> value range of its C type
         self.constants = constants  # #define NAME <int>
         self.on_index = on_index
         self.on_divide = on_divide
+        self.on_call = on_call
 
     def silent(self) -> "Evaluator":
         return Evaluator(self.tracked, self.constants)
@@ -471,8 +474,9 @@ class Evaluator:
             state.update(join_states(then_state, else_state) or {})
             return value
         if isinstance(e, nodes.Call):
-            for arg in e.args:
-                self.eval(arg, state)
+            values = [self.eval(arg, state) for arg in e.args]
+            if self.on_call is not None:
+                self.on_call(e, values)
             return TOP
         if isinstance(e, nodes.Index):
             self.eval(e.base, state)
@@ -784,11 +788,16 @@ class IntervalAnalysis:
 
     def __init__(self, func: nodes.FunctionDef, global_names: Set[str] = frozenset(),
                  global_arrays: Optional[Dict[str, int]] = None,
-                 constants: Optional[Dict[str, int]] = None):
+                 constants: Optional[Dict[str, int]] = None,
+                 assume: Optional[State] = None):
         self.func = func
         self.cfg = build_cfg(func)
         self.constants = dict(constants or {})
         self.tracked = tracked_variables(func, set(global_names))
+        # Ranges assumed for tracked variables (normally parameters) on function entry;
+        # used by contract inference (sca/analysis/contracts.py). Default: unknown.
+        self.assume: State = {name: value for name, value in (assume or {}).items()
+                              if name in self.tracked and not value.is_top()}
         self.arrays = array_sizes(func, global_arrays or {}, self.constants)
         self.evaluator = Evaluator(self.tracked, self.constants)
         self.in_states: Dict[int, Optional[State]] = {b.bid: None for b in self.cfg.blocks}
@@ -805,7 +814,7 @@ class IntervalAnalysis:
         return self.evaluator.refine(pred.branch_cond, out, on_true)
 
     def _incoming(self, block: BasicBlock) -> Optional[State]:
-        state: Optional[State] = {} if block is self.cfg.entry else None
+        state: Optional[State] = dict(self.assume) if block is self.cfg.entry else None
         for p in block.preds:
             state = join_states(state, self._edge(p, block))
         return state
@@ -896,6 +905,53 @@ class IntervalAnalysis:
                 if message:
                     found.append(Finding("condition", block.branch_cond, message))
         return found
+
+    def possible_violations(self) -> Dict[Tuple[str, int, int], str]:
+        """Every index or divisor that *might* be wrong, keyed by (kind, line, col).
+
+        Stricter than findings(): an index whose range is not provably inside the array,
+        or a divisor whose range contains 0 anywhere, counts. Contract inference compares
+        these sets under different parameter assumptions, so "might" is what it needs.
+        """
+        if not self.converged:
+            return {}
+        found: Dict[Tuple[str, int, int], str] = {}
+
+        def on_index(node: nodes.Index, index: Interval) -> None:
+            if not isinstance(node.base, nodes.Identifier):
+                return
+            size = self.arrays.get(node.base.name)
+            if size is None or (index.lo >= 0 and index.hi <= size - 1):
+                return
+            found[("index", node.loc.line, node.loc.col)] = (
+                f"indexes '{node.base.name}[{expr_text(node.index)}]' "
+                f"({size} elements) at line {node.loc.line}")
+
+        def on_divide(node: nodes.Node, op: str, divisor: nodes.Expr, value: Interval) -> None:
+            if value.contains(0):
+                what = "divides" if op == "/" else "takes a modulo"
+                found[("divide", node.loc.line, node.loc.col)] = (
+                    f"{what} by '{expr_text(divisor)}' at line {node.loc.line}")
+
+        checker = Evaluator(self.tracked, self.constants, on_index=on_index, on_divide=on_divide)
+        for block in self.cfg.blocks:
+            state = self.in_states[block.bid]
+            if state is not None:
+                self._transfer(block, state, checker)
+        return found
+
+    def call_arguments(self) -> List[Tuple[nodes.Call, List[Interval]]]:
+        """Each reachable call with the value ranges of its arguments at that point."""
+        if not self.converged:
+            return []
+        calls: List[Tuple[nodes.Call, List[Interval]]] = []
+        recorder = Evaluator(self.tracked, self.constants,
+                             on_call=lambda node, values: calls.append((node, values)))
+        for block in self.cfg.blocks:
+            state = self.in_states[block.bid]
+            if state is not None:
+                self._transfer(block, state, recorder)
+        return calls
 
     def _index_message(self, node: nodes.Index, index: Interval,
                        loops: List[nodes.Stmt]) -> Optional[str]:
