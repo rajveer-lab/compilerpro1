@@ -7,6 +7,7 @@ from sca.rules.unused import UnusedVariableRule, UnusedParameterRule
 from sca.rules.phase7 import UnusedFunctionRule, ShadowedVariableRule, ConstIndexOutOfBoundsRule
 from sca.rules.cfg_rules import UnreachableCodeRule, MissingReturnRule, HighComplexityRule
 from sca.rules.dataflow_rules import DeadStoreRule
+from sca.rules.interval_rules import IndexOutOfRangeRule, DivisionByZeroRule, ConstantConditionRule
 from sca.rules.ast_rules import (
     FunctionTooLongRule,
     DeepNestingRule,
@@ -150,10 +151,33 @@ RULE_CATALOG: List[Dict[str, Any]] = [
         "description": "Function cyclomatic complexity exceeds threshold (10).",
         "tier": 3,
     },
+
+    # Tier 4: Interval analysis (abstract interpretation)
+    {
+        "id": "index-out-of-range",
+        "name": "Index Out of Range",
+        "default_severity": "error",
+        "description": "Array index whose value range (e.g. from a loop bound) reaches outside the array.",
+        "tier": 4,
+    },
+    {
+        "id": "division-by-zero",
+        "name": "Division by Zero",
+        "default_severity": "error",
+        "description": "Divisor that is always 0, or whose value range starts or ends at 0.",
+        "tier": 4,
+    },
+    {
+        "id": "constant-condition",
+        "name": "Constant Condition",
+        "default_severity": "warning",
+        "description": "Condition that is always false (or always true), so a branch or loop body never runs.",
+        "tier": 4,
+    },
 ]
 
 def get_all_rules() -> List[Rule]:
-    """Return new instances of all 18 registered analysis rules."""
+    """Return new instances of all registered analysis rules."""
     return [
         UninitializedVariableRule(),
         UnusedVariableRule(),
@@ -173,4 +197,7 @@ def get_all_rules() -> List[Rule]:
         UnsafeFunctionRule(),
         AssignmentInConditionRule(),
         EmptyBodyRule(),
+        IndexOutOfRangeRule(),
+        DivisionByZeroRule(),
+        ConstantConditionRule(),
     ]

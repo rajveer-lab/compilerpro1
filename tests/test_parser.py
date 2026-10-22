@@ -27,6 +27,37 @@ def test_parser_golden(tmp_path):
     assert func["body"]["stmts"][0]["value"]["kind"] == "IntLiteral"
     assert func["body"]["stmts"][0]["value"]["text"] == "0"
 
+def test_directives_are_escaped_and_skipped(tmp_path):
+    # String-valued defines must still give valid JSON; function-like macros,
+    # value-less defines and conditional directives are skipped, not parsed as code.
+    c_file = tmp_path / "test.c"
+    c_file.write_text(
+        '#include <stdio.h>\n'
+        '#ifndef GUARD\n'
+        '#define GUARD\n'
+        '#define N 5\n'
+        '#define NAME "x"\n'
+        '#define MAX(a, b) ((a) > (b) ? (a) : (b))\n'
+        '#endif\n'
+        '#pragma once\n'
+        'int a[N];\n'
+        'int main() { return a[N - 1]; }\n'
+    )
+    data = run_cparse(str(c_file))
+    assert data["errors"] == []
+    defines = {d["name"]: d["value"] for d in data["directives"]["defines"]}
+    assert defines == {"N": "5", "NAME": '"x"'}
+    assert [i["kind"] for i in data["unit"]["items"]] == ["DeclStmt", "FunctionDef"]
+
+def test_file_path_is_escaped(tmp_path):
+    # Windows paths contain backslashes; quotes are only legal in file names elsewhere.
+    sub = tmp_path / ('we"ird' if os.name != "nt" else "plain")
+    sub.mkdir()
+    c_file = sub / "test.c"
+    c_file.write_text("int main() { return 0; }")
+    data = run_cparse(str(c_file))
+    assert data["file"] == str(c_file)
+
 def test_parser_truncation_fuzz(tmp_path):
     c_file = tmp_path / "test_fuzz.c"
     c_code = "int main(int argc, char **argv) { if (argc > 1) { return 1; } else { return 0; } }"

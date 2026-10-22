@@ -33,6 +33,15 @@ no trailing period.
 | dead-store | warning | liveness | Assigned value never read before being overwritten or function ends. |
 | high-complexity | warning | CFG/AST | Cyclomatic complexity > limit (default 10). Decision points: if, while, for, do-while, case, `&&`, `||`, `?:`. Also reported in `sca metrics`. |
 
+## Tier 4: Interval analysis (abstract interpretation)
+See `docs/INTERVAL_ANALYSIS.md`. All three share one analysis run per file.
+
+| id | severity | description |
+|---|---|---|
+| index-out-of-range | error | `a[e]` on a fixed-size 1-D array where the value range of `e` reaches outside `0..N-1` (e.g. a `for (i = 0; i <= N; i++)` loop). Literal indexes are left to `const-index-out-of-bounds`. Points at the `<=` loop condition when that is the cause. |
+| division-by-zero | error | Divisor of `/`, `%`, `/=`, `%=` that is always 0, or whose bounded range starts or ends at 0 (`for (i = 0; ...) x / i`). |
+| constant-condition | warning | if/while/for condition that is always false (body never runs), or an `if` that is always true while it has an `else` (else never runs). Literal conditions like `while (1)` are not reported. |
+
 ## Stretch rules (only after everything else is done and I approve)
 | id | description |
 |---|---|

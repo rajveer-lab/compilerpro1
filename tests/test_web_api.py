@@ -21,7 +21,7 @@ def test_rules_endpoint(client):
     assert res.status_code == 200
     data = res.get_json()
     assert data["ok"] is True
-    assert len(data["rules"]) == 18
+    assert len(data["rules"]) == 21  # 18 original + 3 interval-analysis rules
     rule_ids = {r["id"] for r in data["rules"]}
     assert "unused-variable" in rule_ids
     assert "missing-return" in rule_ids

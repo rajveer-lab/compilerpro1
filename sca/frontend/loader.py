@@ -179,5 +179,11 @@ def load_translation_unit(data: Dict[str, Any]) -> nodes.TranslationUnit:
 
 def load_ast(data: Dict[str, Any]) -> nodes.TranslationUnit:
     if "unit" in data and data["unit"]:
-        return load_translation_unit(data["unit"])
-    return nodes.TranslationUnit(items=[])
+        unit = load_translation_unit(data["unit"])
+    else:
+        unit = nodes.TranslationUnit(items=[])
+    directives = data.get("directives") or {}
+    for d in directives.get("defines", []):
+        if d.get("name") and d.get("value") is not None:
+            unit.defines[d["name"]] = d["value"]
+    return unit

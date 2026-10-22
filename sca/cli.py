@@ -23,6 +23,10 @@ def main():
     parser_liveness.add_argument("file", help="Path to the C file")
     parser_liveness.add_argument("func", help="Function name")
 
+    parser_ranges = subparsers.add_parser("ranges", help="Dump interval-analysis value ranges for a function")
+    parser_ranges.add_argument("file", help="Path to the C file")
+    parser_ranges.add_argument("func", help="Function name")
+
     parser_score = subparsers.add_parser("score", help="Calculate a code quality score")
     parser_score.add_argument("file", help="Path to the C file")
 
@@ -94,6 +98,22 @@ def main():
                     print(f"Block {b.bid}:")
                     print(f"  IN:  {analysis.in_sets[b.bid]}")
                     print(f"  OUT: {analysis.out_sets[b.bid]}")
+                found = True
+                break
+        if not found:
+            print(f"Function {args.func} not found.")
+
+    elif args.command == "ranges":
+        data = run_cparse(args.file)
+        if "unit" not in data or data["unit"] is None:
+            sys.exit(2)
+        ast = load_ast(data)
+        from sca.analysis.intervals import analyze_function
+        from sca.ast.nodes import FunctionDef
+        found = False
+        for item in ast.items:
+            if isinstance(item, FunctionDef) and item.name == args.func:
+                print(analyze_function(ast, item).describe())
                 found = True
                 break
         if not found:

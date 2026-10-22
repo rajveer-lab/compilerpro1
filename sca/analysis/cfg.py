@@ -26,6 +26,20 @@ class BasicBlock:
         self.statements: List[nodes.Node] = []
         self.preds: List['BasicBlock'] = []
         self.succs: List['BasicBlock'] = []
+        # Set when this block ends in a two-way branch (if/while/for/do-while).
+        # Path-sensitive analyses (interval analysis) refine values differently on
+        # the edge taken when the condition is true vs false.
+        self.branch_cond: Optional[nodes.Expr] = None
+        self.branch_node: Optional[nodes.Stmt] = None
+        self.true_succ: Optional['BasicBlock'] = None
+        self.false_succ: Optional['BasicBlock'] = None
+
+    def set_branch(self, node: nodes.Stmt, cond: nodes.Expr,
+                   true_succ: 'BasicBlock', false_succ: Optional['BasicBlock']):
+        self.branch_node = node
+        self.branch_cond = cond
+        self.true_succ = true_succ
+        self.false_succ = false_succ
 
     def add_statement(self, stmt: nodes.Node):
         self.statements.append(stmt)
@@ -118,6 +132,7 @@ class CFGBuilder:
             else_b = self.cfg.new_block()
             if header:
                 header.add_succ(else_b)
+                header.set_branch(node, node.cond, then_b, else_b)
             self.current_block = else_b
             self.visit(node.else_branch)
             if self.current_block:
@@ -125,7 +140,8 @@ class CFGBuilder:
         else:
             if header:
                 header.add_succ(merge_b)
-                
+                header.set_branch(node, node.cond, then_b, merge_b)
+
         self.current_block = merge_b
 
     def visit_While(self, node: nodes.While):
@@ -144,6 +160,7 @@ class CFGBuilder:
         # so the loop exit is reachable only via a break edge.
         if not is_constant_true(node.cond):
             cond_b.add_succ(merge_b)
+            cond_b.set_branch(node, node.cond, body_b, merge_b)
 
         self.break_targets.append(merge_b)
         self.continue_targets.append(cond_b)
@@ -181,7 +198,8 @@ class CFGBuilder:
         cond_b.add_statement(node.cond)
         cond_b.add_succ(body_b)
         cond_b.add_succ(merge_b)
-        
+        cond_b.set_branch(node, node.cond, body_b, merge_b)
+
         self.break_targets.pop()
         self.continue_targets.pop()
         
@@ -205,6 +223,7 @@ class CFGBuilder:
             cond_b.add_statement(node.cond)
             cond_b.add_succ(body_b)
             cond_b.add_succ(merge_b)
+            cond_b.set_branch(node, node.cond, body_b, merge_b)
         else:
             cond_b.add_succ(body_b)
             

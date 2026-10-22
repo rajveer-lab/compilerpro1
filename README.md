@@ -13,6 +13,10 @@ Two components:
   constant array index out of bounds
 - Flow checks (CFG + dataflow): unreachable code, missing return, uninitialized use,
   dead stores, cyclomatic complexity
+- Interval analysis (abstract interpretation with widening/narrowing): off-by-one loop
+  indexes, division by zero, and conditions that are always false, with an explanation
+  of the values involved. These bugs compile without a single `gcc -Wall -Wextra`
+  warning; see `examples/interval_demo.c` and `docs/INTERVAL_ANALYSIS.md`.
 - Text and JSON output, config file, inline suppression, CI-friendly exit codes
 - Interactive Web UI: offline-first browser IDE with automated fix recommendations, score gauge, and AST viewer
 
@@ -35,6 +39,7 @@ sca tokens <file.c>                # dump tokens (from cparse --tokens)
 sca parse <file.c>                 # Parse and print python AST
 sca cfg <file.c> <func>            # dump a CFG (debugging)
 sca liveness <file.c> <func>       # print liveness IN/OUT per block
+sca ranges <file.c> <func>         # print interval-analysis value ranges per block
 sca web [--host HOST] [--port PORT] # launch interactive web application
 ```
 
@@ -62,4 +67,5 @@ See [`docs/WEB_APP.md`](docs/WEB_APP.md) for full documentation, API reference, 
 
 ## Docs
 `docs/`: spec, C subset and grammar, JSON AST schema, architecture, build/run, rules,
-testing, web application guide (`docs/WEB_APP.md`), task plan.
+testing, interval analysis (`docs/INTERVAL_ANALYSIS.md`), web application guide
+(`docs/WEB_APP.md`), task plan.

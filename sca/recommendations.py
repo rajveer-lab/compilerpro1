@@ -343,6 +343,36 @@ def build_recommendations(
             explanation = "Index is outside declared array bounds. Adjust the index or enlarge array dimensions."
             safety = "manual"
 
+        # Interval analysis rules
+        elif rule_id == "index-out-of-range":
+            title = "Keep the array index in range"
+            explanation = "Make sure the index stays between 0 and the array length minus 1: fix the loop bound or check the index before the access."
+            safety = "manual"
+            m_loop = re.search(r"loop on line (\d+) runs while '(.+?) <= (.+?)'", message)
+            if m_loop:
+                loop_line = int(m_loop.group(1))
+                var, bound = m_loop.group(2), m_loop.group(3)
+                title = f"Fix off-by-one loop bound on line {loop_line}"
+                explanation = (f"The loop runs one step too far: '{var} <= {bound}' lets '{var}' reach {bound}, "
+                               f"one past the last valid index. Use '{var} < {bound}'.")
+                loop_text = lines[loop_line - 1] if 1 <= loop_line <= num_lines else ""
+                # Only when the line has exactly one '<=' do we know which one to change.
+                if loop_text.count("<=") == 1 and loop_line not in used_edit_lines:
+                    safety = "review"
+                    edits = [Edit(line_start=loop_line, line_end=loop_line,
+                                  expected_old=[loop_text], new=[loop_text.replace("<=", "<")])]
+                    used_edit_lines.add(loop_line)
+
+        elif rule_id == "division-by-zero":
+            title = "Guard the division against zero"
+            explanation = "Check the divisor first (e.g. 'if (d != 0)') or fix the value it is given."
+            safety = "manual"
+
+        elif rule_id == "constant-condition":
+            title = "Fix or remove the dead branch"
+            explanation = "The condition never changes value here, so one branch is dead code. Check the condition and the values the variables are given."
+            safety = "manual"
+
         # 12. Unused Function
         elif rule_id == "unused-function":
             fn_name = symbol or "function"

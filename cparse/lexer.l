@@ -62,8 +62,15 @@ E [Ee][+-]?{D}+
     }
     BEGIN(INITIAL);
 }
+    /* Function-like macros (`MAX(a,b) ...`) and value-less defines (`#define DEBUG`)
+     * don't match the object-like rule above; skip the rest of the line instead of
+     * lexing the macro body as code. For `N 5` both rules match the same length and
+     * flex picks the earlier (object-like) one. */
+<DIR_DEFINE>[^\r\n]* { BEGIN(INITIAL); }
 <DIR_DEFINE>\n { yycolumn = 1; BEGIN(INITIAL); }
-<DIR_DEFINE>.  { BEGIN(INITIAL); }
+
+    /* Conditional compilation and other directives are skipped (docs/C_SUBSET.md). */
+"#"[ \t]*("if"|"ifdef"|"ifndef"|"elif"|"else"|"endif"|"undef"|"pragma"|"error"|"warning"|"line")[^\r\n]* { }
 
 "void"     { return VOID; }
 "char"     { return CHAR; }

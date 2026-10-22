@@ -13,8 +13,11 @@ DEFAULT_WEIGHTS: Dict[str, int] = {
     "uninitialized-variable": 10,
     "const-index-out-of-bounds": 10,
     "unsafe-function": 10,
+    "index-out-of-range": 10,
+    "division-by-zero": 10,
 
     # Medium impact (4-5 pts)
+    "constant-condition": 5,
     "dead-store": 5,
     "missing-return": 5,
     "unreachable-code": 5,
@@ -43,7 +46,10 @@ RULE_SEVERITIES: Dict[str, str] = {
     "uninitialized": "error",
     "uninitialized-variable": "error",
     "internal-error": "error",
+    "index-out-of-range": "error",
+    "division-by-zero": "error",
 
+    "constant-condition": "warning",
     "function-too-long": "warning",
     "deep-nesting": "warning",
     "too-many-params": "warning",

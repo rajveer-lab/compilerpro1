@@ -25,6 +25,10 @@ static void print_string(const char *s) {
     printf("\"");
 }
 
+void json_print_string(const char *s) {
+    print_string(s);
+}
+
 static void print_type(Type *t);
 static void print_node(Node *n, int level);
 

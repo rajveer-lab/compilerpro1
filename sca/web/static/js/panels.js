@@ -152,7 +152,7 @@ function renderDiagnosticsList() {
         <div class="empty-state">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"></path><polyline points="22 4 12 14.01 9 11.01"></polyline></svg>
           <h3 style="font-weight: 600;">No Issues Detected</h3>
-          <p style="font-size: 13px;">Your C code passed all 18 quality checks with a perfect 100/100 score.</p>
+          <p style="font-size: 13px;">Your C code passed all quality checks with a perfect 100/100 score.</p>
         </div>`;
     } else {
       container.innerHTML = `
@@ -203,7 +203,7 @@ function renderRecommendations(recommendations, scoreObj, projectedScore) {
       <div class="empty-state">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"></path><polyline points="22 4 12 14.01 9 11.01"></polyline></svg>
         <h3 style="font-weight: 600;">Code is in Great Shape</h3>
-        <p style="font-size: 13px;">No active recommendations. All 18 analyzer rules are satisfied.</p>
+        <p style="font-size: 13px;">No active recommendations. All analyzer rules are satisfied.</p>
       </div>`;
     return;
   }

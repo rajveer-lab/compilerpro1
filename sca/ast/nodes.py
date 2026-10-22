@@ -1,5 +1,5 @@
-from dataclasses import dataclass
-from typing import List, Optional, Union, Any
+from dataclasses import dataclass, field
+from typing import Dict, List, Optional, Union, Any
 
 @dataclass
 class Loc:
@@ -266,3 +266,5 @@ class FunctionDef(Decl):
 @dataclass
 class TranslationUnit:
     items: List[Decl]
+    # Object-like `#define NAME value` macros (from the JSON `directives`), name -> raw value text.
+    defines: Dict[str, str] = field(default_factory=dict)
