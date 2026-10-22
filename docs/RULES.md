@@ -41,6 +41,7 @@ See `docs/INTERVAL_ANALYSIS.md`. All three share one analysis run per file.
 | index-out-of-range | error | `a[e]` on a fixed-size 1-D array where the value range of `e` reaches outside `0..N-1` (e.g. a `for (i = 0; i <= N; i++)` loop). Literal indexes are left to `const-index-out-of-bounds`. Points at the `<=` loop condition when that is the cause. |
 | division-by-zero | error | Divisor of `/`, `%`, `/=`, `%=` that is always 0, or whose bounded range starts or ends at 0 (`for (i = 0; ...) x / i`). |
 | constant-condition | warning | if/while/for condition that is always false (body never runs), or an `if` that is always true while it has an `else` (else never runs). Literal conditions like `while (1)` are not reported. |
+| contract-violation | error | A call whose argument range (from the caller's interval analysis) breaks the callee's inferred input contract, e.g. `get(7)` when `get` indexes `a[5]` with its parameter and so requires `0 <= n <= 4`. See `sca contracts` and `sca/analysis/contracts.py`. Unknown arguments are not reported. |
 
 ## Stretch rules (only after everything else is done and I approve)
 | id | description |
