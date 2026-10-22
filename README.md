@@ -19,6 +19,13 @@ Two components:
   indexes, division by zero, and conditions that are always false, with an explanation
   of the values involved. These bugs compile without a single `gcc -Wall -Wextra`
   warning; see `examples/interval_demo.c` and `docs/INTERVAL_ANALYSIS.md`.
+- Input contract inference: for each function, the parameter values it is provably safe
+  for (`get(int n)` indexing `a[5]` requires `0 <= n <= 4`; `avg` dividing by `count`
+  requires `count != 0`), and a `contract-violation` error for calls in the same file
+  that break them (`sca contracts`, Contracts tab).
+- Misconception diagnosis: each issue is linked to the beginner misconception behind it
+  ("an array of size N has an index N", "variables start at 0"), with a per-browser
+  learning profile in the web UI (`sca analyze --explain`, Learning tab).
 - Text and JSON output, config file, inline suppression, CI-friendly exit codes
 - Interactive Web UI: offline-first browser IDE with automated fix recommendations, score gauge, and AST viewer
 
@@ -33,7 +40,8 @@ make test
 
 ## Usage
 ```bash
-sca analyze <file.c> [--rule ID ...] [--disable ID ...] [--fail-on error,warning]
+sca analyze <file.c> [--rule ID ...] [--disable ID ...] [--fail-on error,warning] [--explain]
+sca contracts <file.c>             # infer the input ranges each function is safe for
 sca score <file.c>                 # compute quality score (0-100) and grade
 sca metrics <file.c>               # compute per-function code metrics
 sca ast <file.c>                   # dump the AST
