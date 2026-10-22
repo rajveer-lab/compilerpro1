@@ -27,6 +27,10 @@ def main():
     parser_ranges.add_argument("file", help="Path to the C file")
     parser_ranges.add_argument("func", help="Function name")
 
+    parser_contracts = subparsers.add_parser("contracts", help="Infer the input ranges each function is safe for")
+    parser_contracts.add_argument("file", help="Path to the C file")
+    parser_contracts.add_argument("--json", action="store_true", help="Output contracts as JSON")
+
     parser_score = subparsers.add_parser("score", help="Calculate a code quality score")
     parser_score.add_argument("file", help="Path to the C file")
 
@@ -39,6 +43,8 @@ def main():
     parser_analyze.add_argument("--rule", action="append", help="Only run these rules")
     parser_analyze.add_argument("--disable", action="append", help="Disable these rules")
     parser_analyze.add_argument("--fail-on", default="error,warning", help="Comma-separated severities to exit 1 on")
+    parser_analyze.add_argument("--explain", action="store_true",
+                                help="Add the beginner misconception behind each issue")
 
     parser_web = subparsers.add_parser("web", help="Start the web UI server")
     parser_web.add_argument("--host", default="127.0.0.1", help="Host address to bind (default: 127.0.0.1)")
@@ -119,6 +125,31 @@ def main():
         if not found:
             print(f"Function {args.func} not found.")
 
+    elif args.command == "contracts":
+        data = run_cparse(args.file)
+        if "unit" not in data or data["unit"] is None or data.get("errors"):
+            print(json.dumps(data.get("errors", []), indent=2))
+            sys.exit(2)
+        ast = load_ast(data)
+        from sca.analysis.contracts import infer_unit
+        results = infer_unit(ast)
+        if getattr(args, "json", False):
+            print(json.dumps([fc.to_dict() for fc in results], indent=2))
+        elif not results:
+            print("No functions found.")
+        else:
+            for fc in results:
+                params = [c.text for c in fc.contracts]
+                head = f"{fc.function}() [line {fc.line}]"
+                if not params:
+                    note = "" if fc.complete else " (search stopped early: file too large)"
+                    print(f"{head:<32} no input constraints found{note}")
+                    continue
+                print(f"{head:<32} requires {' && '.join(params)}")
+                for c in fc.contracts:
+                    for reason in c.reasons:
+                        print(f"{'':<32}   because it {reason}")
+
     elif args.command == "score":
         try:
             result = analyze_file(args.file)
@@ -168,15 +199,20 @@ def main():
             print(json.dumps(result.parse_errors, indent=2))
             sys.exit(2)
 
+        from sca.misconceptions import misconception_for
         out = []
         for diag in result.diagnostics:
-            out.append({
+            item = {
                 "file": diag["file"],
                 "line": diag["line"],
                 "col": diag["col"],
                 "message": diag["message"],
                 "rule_id": diag["rule_id"]
-            })
+            }
+            misconception = misconception_for(diag["rule_id"]) if args.explain else None
+            if misconception is not None:
+                item["misconception"] = misconception.to_dict()
+            out.append(item)
 
         print(json.dumps(out, indent=2))
 
