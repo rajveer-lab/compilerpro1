@@ -22,6 +22,11 @@ def test_service_clean_example():
     assert res.metrics[0]["params"] == 0
     assert res.metrics[0]["cyclomatic"] == 1
 
+def test_service_metrics_void_params_count_as_zero():
+    """`f(void)` takes no parameters, so Metrics must not show Params 1 for it."""
+    res = analyze_source("int helper(void) {\n    return 1;\n}\n\nint main(void) {\n    return helper();\n}\n")
+    assert [(m["function"], m["params"]) for m in res.metrics] == [("helper", 0), ("main", 0)]
+
 def test_service_smelly_example():
     """Verify smelly example reports unused-variable and correct score deductions."""
     res = analyze_file("examples/smelly.c")

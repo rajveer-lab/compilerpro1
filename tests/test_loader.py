@@ -25,3 +25,30 @@ def test_loader_simple(tmp_path):
     assert isinstance(ret, nodes.Return)
     assert isinstance(ret.value, nodes.IntLiteral)
     assert ret.value.text == "0"
+
+def _load(tmp_path, code):
+    c_file = tmp_path / "test.c"
+    c_file.write_text(code)
+    return load_ast(run_cparse(str(c_file)))
+
+def test_loader_void_parameter_list_means_no_params(tmp_path):
+    ast = _load(tmp_path, "int f(void);\nint main(void) { return 0; }")
+    funcs = [i for i in ast.items if isinstance(i, (nodes.FunctionDef, nodes.Prototype))]
+    assert [f.name for f in funcs if isinstance(f, nodes.FunctionDef)] == ["main"]
+    assert all(f.params == [] for f in funcs)
+
+def test_loader_static_void_function_has_no_params(tmp_path):
+    ast = _load(tmp_path, "static void report(void) { }\nint main() { report(); return 0; }")
+    assert ast.items[0].name == "report"
+    assert ast.items[0].params == []
+
+def test_loader_void_pointer_parameter_is_kept(tmp_path):
+    ast = _load(tmp_path, "int first(void *p) { return p != 0; }")
+    params = ast.items[0].params
+    assert len(params) == 1
+    assert params[0].name == "p"
+    assert isinstance(params[0].type, nodes.PointerType)
+
+def test_loader_named_parameters_are_kept(tmp_path):
+    ast = _load(tmp_path, "int add(int a, int b) { return a + b; }")
+    assert [p.name for p in ast.items[0].params] == ["a", "b"]

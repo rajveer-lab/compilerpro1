@@ -26,9 +26,20 @@ def load_type(data: Dict[str, Any]) -> nodes.Type:
     elif tk == "typedef":
         return nodes.TypedefType(name=data["name"])
     elif tk == "function":
-        params = [load_node(p) for p in data["params"]] if data.get("params") else []
-        return nodes.FunctionType(returns=load_type(data["returns"]), params=params)
+        return nodes.FunctionType(returns=load_type(data["returns"]), params=load_params(data.get("params")))
     raise ValueError(f"Unknown type kind: {tk}")
+
+def load_params(raw: List[Dict[str, Any]]) -> List[nodes.Node]:
+    """Load a parameter list. `f(void)` means f takes no parameters, so it loads as [].
+
+    cparse keeps `(void)` as one unnamed `void` Param, true to the source text; without
+    this, metrics and rules would count it as a parameter. `void *p` is a real one.
+    """
+    params = [load_node(p) for p in raw or []]
+    if (len(params) == 1 and params[0].name is None
+            and isinstance(params[0].type, nodes.BaseType) and params[0].type.name == "void"):
+        return []
+    return params
 
 def load_node(data: Dict[str, Any]) -> nodes.Node:
     if data is None:
@@ -41,7 +52,7 @@ def load_node(data: Dict[str, Any]) -> nodes.Node:
             loc=loc,
             name=data["name"],
             return_type=load_type(data["return_type"]),
-            params=[load_node(p) for p in data.get("params", [])],
+            params=load_params(data.get("params")),
             storage=data.get("storage"),
             body=load_node(data["body"])
         )
@@ -50,7 +61,7 @@ def load_node(data: Dict[str, Any]) -> nodes.Node:
             loc=loc,
             name=data["name"],
             return_type=load_type(data["return_type"]),
-            params=[load_node(p) for p in data.get("params", [])],
+            params=load_params(data.get("params")),
             storage=data.get("storage")
         )
     elif kind == "VarDecl":
