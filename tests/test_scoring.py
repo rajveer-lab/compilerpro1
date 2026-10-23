@@ -62,3 +62,17 @@ def test_score_floor_at_zero():
     score = compute_score(issues)
     assert score.value == 0
     assert score.grade == "F (Failing)"
+
+
+def test_projected_score_respects_floor():
+    """Safe-fix gains are taken off the penalty total, not added to a score floored at 0."""
+    from sca.service import analyze_source
+    lines = ["int main(void) {", "    int unused = 0;", "    int a = 1;", "    int z = 0;"]
+    lines += ["    a = a / z;"] * 12          # 12 always-zero divisions: 120 penalty points
+    lines += ["    return a;", "}"]
+    result = analyze_source("\n".join(lines) + "\n")
+    penalty = sum(result.score.deductions.values())
+    assert penalty > 100 and result.score.value == 0
+    assert any(r["safety"] == "safe" and r["edits"] for r in result.recommendations)
+    # Removing the unused variable (2 points) still leaves well over 100 points.
+    assert result.projected_score == 0
