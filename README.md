@@ -72,6 +72,12 @@ Key Web Features:
 
 See [`docs/WEB_APP.md`](docs/WEB_APP.md) for full documentation, API reference, and manual QA checklist.
 
+## Quality score
+Each finding deducts its rule's weight (10 points for errors such as `index-out-of-range`, down to
+1 for `naming-convention`). The score is `100 − penalty` up to 50 penalty points; above that it is
+`2500 ÷ penalty` with one decimal, so it never reaches 0 and every fix on a very buggy file still
+raises it. Grades: A ≥ 90, B ≥ 80, C ≥ 70, D ≥ 60, F below.
+
 ## Exit codes
 - 0: no findings at or above `--fail-on` severity
 - 1: findings at or above `--fail-on` severity
