@@ -2012,3 +2012,11 @@ body {
 .stale-badge {
   flex-shrink: 0;
 }
+
+.score-floor-note {
+  margin: 6px 0 0;
+  max-width: 340px;
+  font-size: 12px;
+  line-height: 1.45;
+  color: var(--text-secondary);
+}
