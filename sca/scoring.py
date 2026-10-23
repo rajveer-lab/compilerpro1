@@ -70,7 +70,28 @@ RULE_SEVERITIES: Dict[str, str] = {
     "unused-parameter": "info",
 }
 
-def get_grade(score: int) -> str:
+# Up to this many penalty points the score falls one point per penalty point.
+LINEAR_LIMIT = 50
+
+
+def score_from_penalty(total_penalty: int) -> Union[int, float]:
+    """Score (0-100] for a penalty total.
+
+    100 - penalty up to 50 points; above that 2500 / penalty, which meets the line at
+    50 and keeps falling without ever reaching 0, so fixes on a very buggy file still
+    raise the score. Below 50 the score has one decimal, so small fixes stay visible;
+    grades are unaffected because everything under 60 is an F either way.
+    """
+    if total_penalty <= LINEAR_LIMIT:
+        return 100 - total_penalty
+    # Tenths, rounded half up in exact integer arithmetic (matches Math.round in the
+    # web UI; Python's round() would round exact halves to even).
+    tenths = (2 * LINEAR_LIMIT * LINEAR_LIMIT * 10 + total_penalty) // (2 * total_penalty)
+    tenths = max(1, tenths)   # beyond 50,000 points it would round to 0; 0.1 is the floor
+    return tenths // 10 if tenths % 10 == 0 else tenths / 10
+
+
+def get_grade(score: float) -> str:
     """Return letter grade with qualitative descriptor."""
     if score >= 90:
         return "A (Excellent)"
@@ -84,7 +105,7 @@ def get_grade(score: int) -> str:
 
 @dataclass
 class Score:
-    value: int
+    value: Union[int, float]   # see score_from_penalty: one decimal below 50
     grade: str
     total_issues: int
     deductions: Dict[str, int] = field(default_factory=dict)
@@ -137,7 +158,7 @@ def compute_score(
         total_penalty += weight
         deductions[rule_id] = deductions.get(rule_id, 0) + weight
 
-    score_val = max(0, 100 - total_penalty)
+    score_val = score_from_penalty(total_penalty)
     grade = get_grade(score_val)
 
     # Sort deductions descending by penalty
