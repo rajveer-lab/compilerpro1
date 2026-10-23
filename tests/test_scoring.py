@@ -1,5 +1,5 @@
 import pytest
-from sca.scoring import compute_score, DEFAULT_WEIGHTS, RULE_SEVERITIES, get_grade
+from sca.scoring import compute_score, DEFAULT_WEIGHTS, RULE_SEVERITIES, get_grade, score_from_penalty
 from sca.rules.registry import get_all_rules, RULE_CATALOG
 from sca.rules.base import Issue
 
@@ -53,26 +53,54 @@ def test_grade_thresholds():
     assert get_grade(59) == "F (Failing)"
     assert get_grade(0) == "F (Failing)"
 
-def test_score_floor_at_zero():
-    # 20 uninitialized issues = 200 points penalty
+def test_heavy_penalty_never_reaches_zero():
+    # 20 uninitialized issues = 200 points penalty -> 2500 / 200
     issues = [
         Issue(file="test.c", line=i, col=1, message="msg", rule_id="uninitialized")
         for i in range(1, 21)
     ]
     score = compute_score(issues)
-    assert score.value == 0
+    assert score.value == 12.5
     assert score.grade == "F (Failing)"
 
 
-def test_projected_score_respects_floor():
-    """Safe-fix gains are taken off the penalty total, not added to a score floored at 0."""
+def test_score_curve():
+    # Linear up to 50 penalty points: scores and grades there are unchanged.
+    assert [score_from_penalty(p) for p in (0, 2, 10, 40, 50)] == [100, 98, 90, 60, 50]
+    # Above 50: 2500 / penalty, one decimal, meeting the line at 50 and never reaching 0.
+    assert score_from_penalty(51) == 49
+    assert score_from_penalty(60) == 41.7
+    assert score_from_penalty(100) == 25
+    assert score_from_penalty(226) == 11.1
+    assert score_from_penalty(400) == 6.3         # exact half rounds up, like the web UI
+    assert score_from_penalty(100000) > 0
+    # Never increases with more penalty. At one decimal, every 1-point fix shows up to
+    # 150 points and every 5-point fix (most errors and warnings) up to 350 points;
+    # smaller changes on very buggy files still show in the penalty-point total.
+    values = [score_from_penalty(p) for p in range(0, 1001)]
+    assert all(a >= b for a, b in zip(values, values[1:]))
+    assert all(values[p] > values[p + 1] for p in range(150))
+    assert all(values[p] > values[p + 5] for p in range(350))
+
+
+def test_grades_unchanged_by_curve():
+    # Everything below 60 is an F, so the curve above 50 points cannot change a grade.
+    for p in range(0, 500):
+        old = max(0, 100 - p)
+        assert get_grade(score_from_penalty(p)) == get_grade(old)
+
+
+def test_projected_score_uses_penalty_points():
+    """Safe-fix gains come off the penalty total, then go through the score curve."""
     from sca.service import analyze_source
     lines = ["int main(void) {", "    int unused = 0;", "    int a = 1;", "    int z = 0;"]
     lines += ["    a = a / z;"] * 12          # 12 always-zero divisions: 120 penalty points
     lines += ["    return a;", "}"]
     result = analyze_source("\n".join(lines) + "\n")
     penalty = sum(result.score.deductions.values())
-    assert penalty > 100 and result.score.value == 0
+    assert penalty > 100
+    assert result.score.value == score_from_penalty(penalty)
     assert any(r["safety"] == "safe" and r["edits"] for r in result.recommendations)
-    # Removing the unused variable (2 points) still leaves well over 100 points.
-    assert result.projected_score == 0
+    # Removing the unused variable (2 points) raises the score along the curve.
+    assert result.projected_score == score_from_penalty(penalty - 2)
+    assert result.projected_score > result.score.value
