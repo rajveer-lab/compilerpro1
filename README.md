@@ -1,5 +1,7 @@
 # sca — Static Code Quality Analyzer for C
 
+**Live demo:** https://compilerpro1.vercel.app (web app hosted on Vercel; redeploys on every push to `main`)
+
 Two components:
 
 
