@@ -81,6 +81,12 @@ The interface is structured as a dual-pane workspace with a draggable horizontal
      browser (`localStorage`), with a Reset button.
 5. **Score Tab:**
    - **Animated Circular SVG Gauge:** Displays score (0–100) and letter grade with color transitions (A green, B blue, C amber, D orange, F red).
+   - **Score curve:** the score is `100 − penalty points` up to 50 points; above that it is `2500 ÷ penalty`
+     with one decimal (e.g. 226 points → 11.1), so it never reaches 0 and fixes on a very buggy file still
+     raise it. Grades are the same as a plain `100 − penalty` would give. The total penalty points are shown
+     under the gauge.
+   - **Before vs After Fixes:** the score and penalty points when you started fixing, now, and an estimate after
+     the remaining automatic fixes, plus a per-rule table of what changed.
    - **Deductions Breakdown:** Horizontal progress bars displaying penalties deducted by each rule, sorted by impact.
 6. **Metrics Tab:**
    - Per-function summary table: Function Name, Lines of Code (LOC), Parameter count, Max Nesting Depth, and Cyclomatic Complexity.
