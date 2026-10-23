@@ -17,6 +17,8 @@ def test_service_clean_example():
     assert res.projected_score == 100
     assert len(res.metrics) == 1
     assert res.metrics[0]["function"] == "main"
+    assert res.metrics[0]["line"] == 1
+    assert res.metrics[0]["col"] == 1
     assert res.metrics[0]["params"] == 0
     assert res.metrics[0]["cyclomatic"] == 1
 

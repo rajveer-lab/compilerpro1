@@ -141,6 +141,9 @@ def compute_metrics(ast: nodes.TranslationUnit, source: Optional[str] = None) ->
 
         metrics_list.append({
             "function": item.name,
+            # Where the definition starts, so the web UI can jump to it from the table.
+            "line": item.loc.line if item.loc else None,
+            "col": item.loc.col if item.loc else None,
             "loc": loc,
             "params": params,
             "max_nesting": max_depth,

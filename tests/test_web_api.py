@@ -69,6 +69,14 @@ def test_analyze_clean(client):
     assert data["projected_score"] == 100
     assert len(data["metrics"]) == 1
 
+def test_analyze_metrics_carry_function_lines(client):
+    """The Metrics tab jumps to each function, so every row needs its definition line."""
+    code = "int helper(int x) {\n    return x;\n}\n\nint main() {\n    return helper(0);\n}\n"
+    res = client.post("/api/analyze", json={"code": code})
+    assert res.status_code == 200
+    metrics = res.get_json()["metrics"]
+    assert [(m["function"], m["line"]) for m in metrics] == [("helper", 1), ("main", 5)]
+
 def test_analyze_smelly(client):
     code = "int main() {\n    int unused_x;\n    return 0;\n}\n"
     res = client.post("/api/analyze", json={"code": code})
