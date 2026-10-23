@@ -375,6 +375,13 @@ function renderScore(scoreObj, projectedScore) {
           <span>Total Issues Found:</span>
           <strong>${issuesCount}</strong>
         </div>
+        <div class="score-stat-line">
+          <span>Penalty Points:</span>
+          <strong>${penaltyOf(scoreObj)}</strong>
+        </div>
+        ${penaltyOf(scoreObj) > 100 ? `
+          <p class="score-floor-note">The score stays at 0 until penalties drop below 100. Every fix still lowers
+          the penalty: watch it in Before vs After Fixes below.</p>` : ""}
       </div>
     </div>
 
@@ -442,11 +449,21 @@ function setBaseline(baseline) {
   if (tab) tab.state.scoreBaseline = baseline;
 }
 
+/**
+ * Total penalty points behind a score. The score is 100 minus this, floored at 0, so
+ * on a file with more than 100 points of problems the score sits at 0 while fixes still
+ * lower the penalty; the comparison tracks penalties so that progress stays visible.
+ */
+function penaltyOf(scoreObj) {
+  return Object.values(scoreObj.deductions || {}).reduce((a, b) => a + b, 0);
+}
+
 function snapshotScore(scoreObj, diagnostics) {
   const byRule = {};
   for (const d of diagnostics) byRule[d.rule_id] = (byRule[d.rule_id] || 0) + 1;
   return {
     value: scoreObj.value,
+    penalty: penaltyOf(scoreObj),
     grade: scoreObj.grade,
     issues: diagnostics.length,
     byRule,
@@ -489,6 +506,9 @@ function renderScoreComparison(scoreObj, projectedScore) {
   const now = scoreObj.value;
   const delta = now - before.value;
   const issueDelta = currentDiagnostics.length - before.issues;
+  const penaltyNow = penaltyOf(scoreObj);
+  const penaltyBefore = before.penalty !== undefined ? before.penalty : penaltyNow;
+  const penaltyDelta = penaltyNow - penaltyBefore;
 
   // Estimate for the fixes still on offer: every recommendation with an edit that
   // still matches the code. Counted once per edited line; one edit can fix more than
@@ -507,7 +527,8 @@ function renderScoreComparison(scoreObj, projectedScore) {
     autoGain += rec.score_gain;
     autoCount++;
   }
-  const afterAll = Math.min(100, now + autoGain);
+  // Work in penalty points: adding gains to a score already floored at 0 would overstate it.
+  const afterAll = Math.max(0, Math.min(100, 100 - Math.max(0, penaltyNow - autoGain)));
   const afterSafe = (projectedScore !== undefined) ? projectedScore : now;
 
   const card = (label, value, sub, extraClass = "") => `
@@ -518,6 +539,12 @@ function renderScoreComparison(scoreObj, projectedScore) {
     </div>`;
   const signed = (n) => (n > 0 ? `+${n}` : `${n}`);
   const deltaClass = delta > 0 ? "up" : (delta < 0 ? "down" : "same");
+  // Fewer penalty points is better, so a negative change is shown as an improvement.
+  const penaltyClass = penaltyDelta < 0 ? "up" : (penaltyDelta > 0 ? "down" : "same");
+  const nowSub = `${currentDiagnostics.length} issues · ` +
+    (delta !== 0 ? `<span class="score-delta ${deltaClass}">${signed(delta)} score</span> · ` : "") +
+    `${penaltyNow} penalty pts` +
+    (penaltyDelta !== 0 ? ` <span class="score-delta ${penaltyClass}">(${signed(penaltyDelta)})</span>` : "");
 
   let html = `
     <div class="score-compare-section">
@@ -526,9 +553,9 @@ function renderScoreComparison(scoreObj, projectedScore) {
         <button class="btn-ast-tool" id="btn-score-baseline" title="Use the current score as the new 'before'">Start new comparison</button>
       </div>
       <div class="score-compare-row">
-        ${card("Before", before.value, `${before.issues} issues · ${escapeHtml(before.grade)}`)}
+        ${card("Before", before.value, `${before.issues} issues · ${penaltyBefore} penalty pts`)}
         <span class="score-compare-arrow" aria-hidden="true">&rarr;</span>
-        ${card("Now", now, `${currentDiagnostics.length} issues · <span class="score-delta ${deltaClass}">${signed(delta)} pts</span>`, "current")}
+        ${card("Now", now, nowSub, "current")}
         <span class="score-compare-arrow" aria-hidden="true">&rarr;</span>
         ${card(autoCount ? `After ${autoCount} remaining fix${autoCount === 1 ? "" : "es"}` : "After fixes",
                afterAll,
@@ -561,7 +588,8 @@ function renderScoreComparison(scoreObj, projectedScore) {
           }).join("")}
         </tbody>
       </table>
-      <p class="score-compare-hint">Issues ${before.issues} &rarr; ${currentDiagnostics.length} (${signed(issueDelta)}) since ${before.time.toLocaleTimeString()}.</p>`;
+      <p class="score-compare-hint">Issues ${before.issues} &rarr; ${currentDiagnostics.length} (${signed(issueDelta)}),
+        penalty points ${penaltyBefore} &rarr; ${penaltyNow} (${signed(penaltyDelta)}) since ${before.time.toLocaleTimeString()}.</p>`;
   }
   html += `</div>`;
   return html;
