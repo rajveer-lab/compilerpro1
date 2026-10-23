@@ -281,9 +281,12 @@ def analyze_source(
         recs = build_recommendations(diagnostics, code, ast_items=ast.items if ast else None)
         recommendations = [r.to_dict() for r in recs]
 
-        # Calculate projected score if all safe fixes were applied
+        # Calculate projected score if all safe fixes were applied. Work from the penalty
+        # total: score.value is floored at 0, so adding gains to it would overstate the
+        # result for a file with more than 100 penalty points.
         safe_gain = sum(r.score_gain for r in recs if r.safety == "safe" and r.edits)
-        projected_score = min(100, score.value + safe_gain)
+        total_penalty = sum(score.deductions.values())
+        projected_score = max(0, min(100, 100 - max(0, total_penalty - safe_gain)))
 
         elapsed = round((time.time() - start_time) * 1000, 2)
 
