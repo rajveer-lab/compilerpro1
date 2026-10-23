@@ -223,7 +223,7 @@ function renderRecommendations(recommendations, scoreObj, projectedScore) {
     html += `
       <div class="rec-global-banner">
         <div class="rec-global-info">
-          <span class="rec-global-title">Applying all safe fixes would raise your score from ${currentVal} to ${projectedVal} (+${projectedVal - currentVal} pts)</span>
+          <span class="rec-global-title">Applying all safe fixes would raise your score from ${fmtScore(currentVal)} to ${fmtScore(projectedVal)} (+${fmtScore(projectedVal - currentVal)} pts)</span>
           <span class="rec-global-sub">Harmless automated fixes with zero behavioral impact.</span>
         </div>
         <button id="btn-apply-all-safe" class="btn-apply-all">
@@ -363,7 +363,7 @@ function renderScore(scoreObj, projectedScore) {
             stroke-dasharray="${circumference}" stroke-dashoffset="${offset}"
             stroke-linecap="round" transform="rotate(-90 80 80)"
             style="transition: stroke-dashoffset 0.8s ease;"></circle>
-          <text x="80" y="76" text-anchor="middle" font-size="34" font-weight="700" fill="var(--text-main)" font-family="var(--font-sans)">${score}</text>
+          <text x="80" y="76" text-anchor="middle" font-size="34" font-weight="700" fill="var(--text-main)" font-family="var(--font-sans)">${fmtScore(score)}</text>
           <text x="80" y="98" text-anchor="middle" font-size="12" font-weight="600" fill="var(--text-secondary)">/ 100</text>
         </svg>
       </div>
@@ -379,9 +379,9 @@ function renderScore(scoreObj, projectedScore) {
           <span>Penalty Points:</span>
           <strong>${penaltyOf(scoreObj)}</strong>
         </div>
-        ${penaltyOf(scoreObj) > 100 ? `
-          <p class="score-floor-note">The score stays at 0 until penalties drop below 100. Every fix still lowers
-          the penalty: watch it in Before vs After Fixes below.</p>` : ""}
+        ${penaltyOf(scoreObj) > 50 ? `
+          <p class="score-floor-note">Above 50 penalty points the score is 2500 ÷ penalty, so it never reaches 0
+          and every fix still raises it.</p>` : ""}
       </div>
     </div>
 
@@ -449,13 +449,24 @@ function setBaseline(baseline) {
   if (tab) tab.state.scoreBaseline = baseline;
 }
 
-/**
- * Total penalty points behind a score. The score is 100 minus this, floored at 0, so
- * on a file with more than 100 points of problems the score sits at 0 while fixes still
- * lower the penalty; the comparison tracks penalties so that progress stays visible.
- */
+/** Total penalty points behind a score (the sum of its per-rule deductions). */
 function penaltyOf(scoreObj) {
   return Object.values(scoreObj.deductions || {}).reduce((a, b) => a + b, 0);
+}
+
+/**
+ * Same curve as sca/scoring.py score_from_penalty: 100 - penalty up to 50 points, then
+ * 2500 / penalty with one decimal, so the score never reaches 0 and every fix counts.
+ */
+function scoreFromPenalty(penalty) {
+  if (penalty <= 50) return 100 - penalty;
+  return Math.max(1, Math.round(25000 / penalty)) / 10;
+}
+
+/** A score or score difference with at most one decimal and no float noise. */
+function fmtScore(n) {
+  const r = Math.round(n * 10) / 10;
+  return Number.isInteger(r) ? String(r) : r.toFixed(1);
 }
 
 function snapshotScore(scoreObj, diagnostics) {
@@ -527,22 +538,23 @@ function renderScoreComparison(scoreObj, projectedScore) {
     autoGain += rec.score_gain;
     autoCount++;
   }
-  // Work in penalty points: adding gains to a score already floored at 0 would overstate it.
-  const afterAll = Math.max(0, Math.min(100, 100 - Math.max(0, penaltyNow - autoGain)));
+  // Work in penalty points: the score is not linear above 50 penalty points, so adding
+  // the fixes' gains to the score itself would be wrong.
+  const afterAll = scoreFromPenalty(Math.max(0, penaltyNow - autoGain));
   const afterSafe = (projectedScore !== undefined) ? projectedScore : now;
 
   const card = (label, value, sub, extraClass = "") => `
     <div class="score-compare-card ${extraClass}">
       <span class="score-compare-label">${label}</span>
-      <span class="score-compare-value" style="color: ${scoreColor(value)};">${value}<small>/100</small></span>
+      <span class="score-compare-value" style="color: ${scoreColor(value)};">${fmtScore(value)}<small>/100</small></span>
       <span class="score-compare-sub">${sub}</span>
     </div>`;
-  const signed = (n) => (n > 0 ? `+${n}` : `${n}`);
+  const signed = (n) => (n > 0 ? `+${fmtScore(n)}` : fmtScore(n));
   const deltaClass = delta > 0 ? "up" : (delta < 0 ? "down" : "same");
   // Fewer penalty points is better, so a negative change is shown as an improvement.
   const penaltyClass = penaltyDelta < 0 ? "up" : (penaltyDelta > 0 ? "down" : "same");
   const nowSub = `${currentDiagnostics.length} issues · ` +
-    (delta !== 0 ? `<span class="score-delta ${deltaClass}">${signed(delta)} score</span> · ` : "") +
+    (Math.abs(delta) >= 0.05 ? `<span class="score-delta ${deltaClass}">${signed(delta)} score</span> · ` : "") +
     `${penaltyNow} penalty pts` +
     (penaltyDelta !== 0 ? ` <span class="score-delta ${penaltyClass}">(${signed(penaltyDelta)})</span>` : "");
 
@@ -559,7 +571,7 @@ function renderScoreComparison(scoreObj, projectedScore) {
         <span class="score-compare-arrow" aria-hidden="true">&rarr;</span>
         ${card(autoCount ? `After ${autoCount} remaining fix${autoCount === 1 ? "" : "es"}` : "After fixes",
                afterAll,
-               autoCount ? `≈ estimate · safe fixes only: ${afterSafe}` : "no automatic fixes left", "projected")}
+               autoCount ? `≈ estimate · safe fixes only: ${fmtScore(afterSafe)}` : "no automatic fixes left", "projected")}
       </div>`;
 
   // Which issue types changed since the baseline
