@@ -34,7 +34,9 @@
 - Holds `DEFAULT_WEIGHTS` covering all 18 rules plus aliases.
 - Holds `RULE_SEVERITIES` mapping rule IDs to `"error"`, `"warning"`, or `"info"`.
 - `Score` dataclass encapsulating:
-  - `value`: integer (0-100)
+  - `value`: 0-100, from the penalty total by `score_from_penalty()`: `100 - penalty` up to 50
+    penalty points, then `2500 / penalty` with one decimal (never below 0.1), so every fix on a
+    very buggy file still raises it. Grades are unaffected: anything under 60 is an F either way.
   - `grade`: string formatted as `A (Excellent)`, `B (Good)`, `C (Fair)`, `D (Poor)`, or `F (Failing)`
   - `total_issues`: count of issues
   - `deductions`: dictionary of rule deductions sorted by impact
