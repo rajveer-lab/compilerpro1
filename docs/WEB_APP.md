@@ -84,6 +84,7 @@ The interface is structured as a dual-pane workspace with a draggable horizontal
    - **Deductions Breakdown:** Horizontal progress bars displaying penalties deducted by each rule, sorted by impact.
 6. **Metrics Tab:**
    - Per-function summary table: Function Name, Lines of Code (LOC), Parameter count, Max Nesting Depth, and Cyclomatic Complexity.
+   - Click a function name to jump to its definition in the editor.
    - Highlighted warning pills when metrics exceed established thresholds (LOC > 50, Params > 5, Nesting > 4, Complexity > 10).
 7. **AST Tab:**
    - Collapsible hierarchical tree view of the JSON AST.
@@ -171,7 +172,7 @@ Analyzes C source code string and returns complete analysis results.
     ],
     "summary": { "error": 0, "warning": 1, "info": 0 },
     "metrics": [
-      { "function": "main", "loc": 1, "params": 0, "max_nesting": 0, "cyclomatic": 1 }
+      { "function": "main", "line": 1, "col": 1, "loc": 1, "params": 0, "max_nesting": 0, "cyclomatic": 1 }
     ],
     "score": {
       "value": 98,

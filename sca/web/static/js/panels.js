@@ -611,9 +611,14 @@ function renderMetrics(metrics) {
     const nestingWarn = m.max_nesting > 4;
     const complexityWarn = m.cyclomatic > 10;
 
+    const name = escapeHtml(m.function);
+    const nameCell = m.line
+      ? `<button type="button" class="metric-fn-link" data-line="${m.line}" data-col="${m.col || 1}" title="Go to line ${m.line}">${name}</button>`
+      : name;
+
     html += `
       <tr>
-        <td class="font-mono" style="font-weight: 600;">${escapeHtml(m.function)}</td>
+        <td class="font-mono" style="font-weight: 600;">${nameCell}</td>
         <td><span class="metric-val ${locWarn ? 'val-warn' : ''}">${m.loc}${locWarn ? ' (!)' : ''}</span></td>
         <td><span class="metric-val ${paramsWarn ? 'val-warn' : ''}">${m.params}${paramsWarn ? ' (!)' : ''}</span></td>
         <td><span class="metric-val ${nestingWarn ? 'val-warn' : ''}">${m.max_nesting}${nestingWarn ? ' (!)' : ''}</span></td>
@@ -630,6 +635,14 @@ function renderMetrics(metrics) {
   `;
 
   container.innerHTML = html;
+
+  container.querySelectorAll(".metric-fn-link").forEach(link => {
+    link.addEventListener("click", () => {
+      const line = parseInt(link.getAttribute("data-line"), 10);
+      const col = parseInt(link.getAttribute("data-col"), 10);
+      jumpToLine(line, col);
+    });
+  });
 }
 
 function renderMetricsEmpty(msg) {
