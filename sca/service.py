@@ -14,7 +14,7 @@ from sca.ast import nodes
 from sca.rules.base import Issue
 from sca.rules.registry import get_all_rules
 from sca.rules.ast_rules import control_depths
-from sca.scoring import compute_score, Score, RULE_SEVERITIES
+from sca.scoring import compute_score, Score, RULE_SEVERITIES, score_from_penalty
 from sca.recommendations import build_recommendations, apply_edits
 from sca.analysis.contracts import unit_contracts
 from sca.misconceptions import diagnose, misconception_for
@@ -30,7 +30,7 @@ class AnalysisResult:
     metrics: List[Dict[str, Any]] = field(default_factory=list)
     score: Optional[Score] = None
     recommendations: List[Dict[str, Any]] = field(default_factory=list)
-    projected_score: int = 100
+    projected_score: float = 100
     elapsed_ms: float = 0.0
     contracts: List[Dict[str, Any]] = field(default_factory=list)
     misconceptions: List[Dict[str, Any]] = field(default_factory=list)
@@ -282,11 +282,11 @@ def analyze_source(
         recommendations = [r.to_dict() for r in recs]
 
         # Calculate projected score if all safe fixes were applied. Work from the penalty
-        # total: score.value is floored at 0, so adding gains to it would overstate the
-        # result for a file with more than 100 penalty points.
+        # total: the score is not linear above 50 penalty points (see score_from_penalty),
+        # so adding gains to the score itself would be wrong.
         safe_gain = sum(r.score_gain for r in recs if r.safety == "safe" and r.edits)
         total_penalty = sum(score.deductions.values())
-        projected_score = max(0, min(100, 100 - max(0, total_penalty - safe_gain)))
+        projected_score = score_from_penalty(max(0, total_penalty - safe_gain))
 
         elapsed = round((time.time() - start_time) * 1000, 2)
 
